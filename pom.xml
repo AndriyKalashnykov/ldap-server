@@ -99,6 +99,7 @@
         <dependency>
             <groupId>org.apache.directory.server</groupId>
             <artifactId>apacheds-core-annotations</artifactId>
+            <version>${version.org.apache.ds}</version>
             <scope>compile</scope>
             <exclusions>
                 <exclusion>
@@ -115,6 +116,7 @@
         <dependency>
             <groupId>org.apache.directory.server</groupId>
             <artifactId>apacheds-protocol-ldap</artifactId>
+            <version>${version.org.apache.ds}</version>
         </dependency>
     </dependencies>
 </project>
