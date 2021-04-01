@@ -1,7 +1,10 @@
-target/
+*.class
+target
+*/target
 dependency-reduced-pom.xml
 .project
 .classpath
 .settings/
 .idea
 *.iml
+*.DS_Store
