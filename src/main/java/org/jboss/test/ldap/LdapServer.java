@@ -20,6 +20,7 @@
 
 package org.jboss.test.ldap;
 
+import java.io.File;
 import java.util.List;
 
 //import org.apache.commons.io.IOUtils;
@@ -140,17 +141,34 @@ public class LdapServer {
     /**
      * Imports given LDIF file to the directory using given directory service and schema manager.
      *
-     * @param ldifFiles
+     * @param files
      * @throws Exception
      */
-    private void importLdif(List<String> ldifFiles) throws Exception {
-        if (ldifFiles == null || ldifFiles.isEmpty()) {
+    private void importLdif(List<String> files) throws Exception {
+        if (files == null || files.isEmpty()) {
             System.out.println("Importing default data\n");
             importLdif(new LdifReader(LdapServer.class.getResourceAsStream("/" + LDIF_FILENAME_JBOSS_ORG)));
         } else {
-            for (String ldifFile : ldifFiles) {
-                System.out.println("Importing " + ldifFile + "\n");
-                importLdif(new LdifReader(ldifFile));
+            for (String file : files) {
+                File ldifFile = new File(file);
+                if (ldifFile.exists()) {
+                    if (ldifFile.isDirectory()) {
+                        System.out.println("Importing folder: " + ldifFile.getPath() + " \n");
+                        for (File importLdifFile : ldifFile.listFiles()) {
+                            System.out.println("Importing file: " + importLdifFile.getPath() + "\n");
+                            try {
+                                importLdif(new LdifReader(importLdifFile.getPath()));
+                            }
+                            catch (Exception e) {
+                                System.out.println(e.toString() + "\n");
+                            }
+                        }
+                    }
+                    else {
+                        System.out.println("Importing file: " + ldifFile.getPath() + "\n");
+                        importLdif(new LdifReader(ldifFile.getPath()));
+                    }
+                }
             }
         }
     }
