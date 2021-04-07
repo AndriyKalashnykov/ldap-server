@@ -28,10 +28,10 @@ You can simply build the software yourself.
 You should have [git](http://git-scm.com/) installed
 
 ```
-git clone git://github.com/kwart/ldap-server.git
+git clone git://github.com/AndriyKalashnykov/ldap-server.git
 ```
 
-or you can download [current sources as a zip file](https://github.com/kwart/ldap-server/archive/master.zip)
+or you can download [current sources as a zip file](https://github.com/AndriyKalashnykov/ldap-server/archive/master.zip)
 
 ### How to build it
 
