@@ -8,7 +8,7 @@ RUN mkdir -p /ldap/ldif
 WORKDIR /ldap
 
 #RUN wget https://github.com/AndriyKalashnykov/ldap-server/releases/download/2021-04-07/ldap-server.jar
-RUN wget https://github.com/AndriyKalashnykov/ldap-server/releases/download/refs%2Fheads%2Fmaster/ldap-server.jar
+RUN wget https://github.com/AndriyKalashnykov/ldap-server/releases/download/latest/ldap-server.jar
 
 RUN useradd -r -M -d  /ldap ldap && \
     chown -R ldap:ldap /ldap && \
