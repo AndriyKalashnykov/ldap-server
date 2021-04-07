@@ -33,6 +33,10 @@ jobs:
     - name: Test with Maven
       run: mvn -B test --file pom.xml
 
+    - name: Build project # This would actually build your project, using zip for an example artifact
+      run: |
+        mvn clean package install
+
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
