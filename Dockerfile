@@ -6,7 +6,10 @@ RUN apt-get update && apt-get upgrade --yes && apt-get install openssl --yes && 
 
 RUN mkdir -p /ldap/ldif
 WORKDIR /ldap
-RUN wget https://github.com/AndriyKalashnykov/ldap-server/releases/download/2021-04-07/ldap-server.jar
+
+#RUN wget https://github.com/AndriyKalashnykov/ldap-server/releases/download/2021-04-07/ldap-server.jar
+
+COPY ./target/ldap-server.jar /ldap/
 
 RUN useradd -r -M -d  /ldap ldap && \
     chown -R ldap:ldap /ldap && \
