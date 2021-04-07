@@ -8,15 +8,15 @@ Server data are not persisted, they just live in memory.
 
 ## Download
 
-Download latest tag from [GitHub releases](https://github.com/kwart/ldap-server/releases)
+Download latest tag from [GitHub releases](https://github.com/AndriyKalashnykov/ldap-server/releases)
 
 ### Docker container
 
-If you search a lightweight Docker container with LDAP server for your testing, you can use `kwart/ldap-server`.
+If you search a lightweight Docker container with LDAP server for your testing, you can use `andriykalashnykov/apacheds-ad`.
 
 ```bash
-docker pull kwart/ldap-server
-docker run -it --rm kwart/ldap-server
+docker pull andriykalashnykov/apacheds-ad
+docker run -it --rm andriykalashnykov/apacheds-ad
 ```
 
 ## Development
