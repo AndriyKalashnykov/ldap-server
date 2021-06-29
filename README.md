@@ -12,7 +12,7 @@ Download latest tag from [GitHub releases](https://github.com/AndriyKalashnykov/
 
 ### Docker container
 
-If you search a lightweight Docker container with LDAP server for your testing, you can use `andriykalashnykov/apacheds-ad`.
+If you search a lightweight Docker container with LDAP server for your testing, you can use [andriykalashnykov/apacheds-ad](https://hub.docker.com/repository/docker/andriykalashnykov/apacheds-ad)
 
 ```bash
 docker pull andriykalashnykov/apacheds-ad
