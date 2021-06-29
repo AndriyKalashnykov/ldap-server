@@ -15,8 +15,8 @@ Download latest tag from [GitHub releases](https://github.com/AndriyKalashnykov/
 If you search a lightweight Docker container with LDAP server for your testing, you can use [andriykalashnykov/apacheds-ad](https://hub.docker.com/repository/docker/andriykalashnykov/apacheds-ad)
 
 ```bash
-docker pull andriykalashnykov/apacheds-ad
-docker run -it --rm andriykalashnykov/apacheds-ad
+docker pull andriykalashnykov/apacheds-ad:latest
+docker run -it --rm andriykalashnykov/apacheds-ad:latest
 ```
 
 ## Development

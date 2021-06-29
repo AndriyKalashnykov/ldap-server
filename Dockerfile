@@ -1,9 +1,11 @@
-FROM openjdk:11-jre
-# FROM  openjdk:17-ea-22-oraclelinux8
+# FROM openjdk:11-jre
+# RUN apt-get update && apt-get upgrade --yes && apt-get install openssl --yes && apt-get clean autoclean && apt-get autoremove --yes && rm -rf /var/lib/{apt,dpkg,cache,log}/
+
+FROM  openjdk:17-ea-22-oraclelinux8
 
 LABEL maintainer="AndriyKalashnykov@gmail.com"
 
-RUN apt-get update && apt-get upgrade --yes && apt-get install openssl --yes && apt-get clean autoclean && apt-get autoremove --yes && rm -rf /var/lib/{apt,dpkg,cache,log}/
+RUN microdnf install openssl wget
 
 RUN mkdir -p /ldap/ldif
 WORKDIR /ldap
