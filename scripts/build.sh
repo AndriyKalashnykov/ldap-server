@@ -6,7 +6,7 @@ LAUNCH_DIR=$(pwd); SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; c
 
 . $SCRIPT_DIR/set-env.sh
 
-cd $ACTIVEMQ_VER
+cd $SCRIPT_DIR/..
 
 #docker rmi -f ${DOCKER_LOGIN}/$APACHEDS_IMAGE_NAME:$APACHEDS_VER
 DOCKER_BUILDKIT=1 docker build -f Dockerfile -t ${DOCKER_LOGIN}/$APACHEDS_IMAGE_NAME:$APACHEDS_VER .
