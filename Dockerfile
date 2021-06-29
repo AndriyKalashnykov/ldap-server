@@ -1,4 +1,5 @@
-FROM openjdk:8-jre
+FROM openjdk:11-jre
+# FROM  openjdk:17-ea-22-oraclelinux8
 
 LABEL maintainer="AndriyKalashnykov@gmail.com"
 
