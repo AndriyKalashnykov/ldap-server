@@ -1,6 +1,7 @@
 # FROM openjdk:11-jre
 # RUN apt-get update && apt-get upgrade --yes && apt-get install openssl --yes && apt-get clean autoclean && apt-get autoremove --yes && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
+# https://github.com/influxdata/docker-docs/tree/master/openjdk
 FROM  openjdk:17-ea-22-oraclelinux8
 
 LABEL maintainer="AndriyKalashnykov@gmail.com"
