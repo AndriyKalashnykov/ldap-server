@@ -11,7 +11,10 @@ RUN microdnf install openssl wget
 RUN mkdir -p /ldap/ldif
 WORKDIR /ldap
 
-#RUN wget https://github.com/AndriyKalashnykov/ldap-server/releases/download/2021-04-07/ldap-server.jar
+# RUN wget https://github.com/AndriyKalashnykov/ldap-server/releases/download/2021-04-07/ldap-server.jar
+
+# followint line skips caching of downloaded ldap-server.jar
+ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
 RUN wget https://github.com/AndriyKalashnykov/ldap-server/releases/download/latest/ldap-server.jar
 
 RUN useradd -r -M -d  /ldap ldap && \
