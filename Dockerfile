@@ -15,7 +15,7 @@ WORKDIR /ldap
 
 # followint line skips caching of downloaded ldap-server.jar
 ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
-RUN wget https://github.com/AndriyKalashnykov/ldap-server/releases/download/latest/ldap-server.jar
+RUN wget --timeout=600 https://github.com/AndriyKalashnykov/ldap-server/releases/download/latest/ldap-server.jar
 
 RUN useradd -r -M -d  /ldap ldap && \
     chown -R ldap:ldap /ldap && \
