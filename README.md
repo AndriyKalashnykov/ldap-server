@@ -21,11 +21,25 @@ docker run -it --rm andriykalashnykov/apacheds-ad:latest
 
 ## Development
 
-You can simply build the software yourself.
+### Pre-requisites
 
-### How to get the sources
+* [sdkman](https://sdkman.io/install)
 
-You should have [git](http://git-scm.com/) installed
+    Install and use JDK 18
+
+    ```bash
+    sdk install java 18.0.1-tem
+    sdk use java 18.0.1-tem
+    ```
+* [Apache Maven](https://maven.apache.org/install.html)
+
+  Install Apache Maven 3.8.5
+
+    ```bash
+    sdk install maven 3.8.5
+    sdk use maven 3.8.5
+    ```
+* [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
 
 ```
 git clone git://github.com/AndriyKalashnykov/ldap-server.git
