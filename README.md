@@ -1,5 +1,7 @@
 [![build-test-push](https://github.com/AndriyKalashnykov/ldap-server/actions/workflows/build-test-push.yml/badge.svg?branch=master)](https://github.com/AndriyKalashnykov/ldap-server/actions/workflows/build-test-push.yml)
 [![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FAndriyKalashnykov%2Fldap-server&count_bg=%2333CD56&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false)](https://hits.seeyoufarm.com)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 # Simple all-in-one LDAP server (wrapped [ApacheDS](http://directory.apache.org/apacheds/)) in Java.
 
 You don't need any configuration files to get it working. Just launch the JAR and that's it.
