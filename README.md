@@ -4,13 +4,7 @@
 
 # Simple all-in-one LDAP server (wrapped [ApacheDS](http://directory.apache.org/apacheds/)) in Java.
 
-You don't need any configuration files to get it working. Just launch the JAR and that's it.
-
-Server data are not persisted, they just live in memory.
-
-## Download
-
-Download latest tag from [GitHub releases](https://github.com/AndriyKalashnykov/ldap-server/releases)
+You don't need any configuration files to get it working. Just launch the JAR and that's it. Server data are not persisted, they just live in memory.
 
 ### Docker container
 
@@ -137,7 +131,7 @@ keytool -validity 365 -genkey -alias myserver -keyalg RSA -keystore /tmp/ldaps.k
 java -Djavax.net.debug=all -jar target/ldap-server.jar -sp 1038389 -skf /tmp/ldaps.keystore -skp 123456
 ```
 
-## Default LDIF
+## [Default LDIF](https://github.com/AndriyKalashnykov/ldap-server/blob/65117f5403ef6a53c17f41e0759e6961e8e20ec6/src/main/resources/jboss-org.ldif)
 
 ```
 version: 1
