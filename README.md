@@ -64,7 +64,7 @@ $ java -jar target/ldap-server.jar --help
 The ldap-server is a simple LDAP server implementation based on ApacheDS. It
 creates one user partition with root 'dc=jboss,dc=org'.
 
-Usage: java -jar ldap-server.jar [options] [LDIFs to import]
+Usage: java -jar ldap-server.jar [options] [file1.ldif file2.ldif | /path/to/ldifs]
 
   Options:
     --allow-anonymous, -a
@@ -103,7 +103,9 @@ Usage: java -jar ldap-server.jar [options] [LDIFs to import]
        Default: false
 
    LDIFs to import: 
-       - if empty then default LDIFs are used, otherwise one or more LDIF files separated by comma will be imported
+       - if empty then default LDIFs are used
+       - one or more LDIF files separated by space will be imported
+       - alternatively path to directory containing LDIFs can be provided
 
 Examples:
 

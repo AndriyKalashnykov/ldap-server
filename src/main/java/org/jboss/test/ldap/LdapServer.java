@@ -21,9 +21,10 @@
 package org.jboss.test.ldap;
 
 import java.io.File;
+import java.io.FileFilter;
+import java.io.FilenameFilter;
 import java.util.List;
 
-//import org.apache.commons.io.IOUtils;
 import org.apache.directory.api.ldap.model.entry.DefaultEntry;
 import org.apache.directory.api.ldap.model.ldif.LdifEntry;
 import org.apache.directory.api.ldap.model.ldif.LdifReader;
@@ -154,7 +155,12 @@ public class LdapServer {
                 if (ldifFile.exists()) {
                     if (ldifFile.isDirectory()) {
                         System.out.println("Importing folder: " + ldifFile.getPath() + " \n");
-                        for (File importLdifFile : ldifFile.listFiles()) {
+                        for (File importLdifFile : ldifFile.listFiles(new FilenameFilter() {
+                            public boolean accept(File dirFiles, String filename) {
+                                boolean endsWith = filename.toLowerCase().endsWith(".ldif");
+                                return endsWith;
+                            }
+                        })) {
                             System.out.println("Importing file: " + importLdifFile.getPath() + "\n");
                             try {
                                 importLdif(new LdifReader(importLdifFile.getPath()));
