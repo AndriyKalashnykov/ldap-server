@@ -109,13 +109,13 @@ Usage: java -jar ldap-server.jar [options] [file1.ldif file2.ldif | /path/to/ldi
 
 Examples:
 
-$ java -jar ldap-server.jar users.ldif
-Starts LDAP server on port 10389 (all interfaces) and imports users.ldif
+$ java -jar ./target/ldap-server.jar ./target/classes/jboss-org.ldif
+Starts LDAP server on port 10389 (all interfaces) and imports jboss-org.ldif
 
-$ java -jar ldap-server.jar -sp 10636 users.ldif
+$ java -jar ./target/ldap-server.jar -sp 10636 ./target/classes/jboss-org.ldif
 Starts LDAP server on port 10389 and LDAPs on port 10636 and imports the LDIF
 
-$ java -jar ldap-server.jar -b 127.0.0.1 -p 389
+$ java -jar ./target/ldap-server.jar -b 127.0.0.1 -p 389
 Starts LDAP server on address 127.0.0.1:389 and imports default data (one user
 entry 'uid=jduke,ou=Users,dc=jboss,dc=org'
 ```
