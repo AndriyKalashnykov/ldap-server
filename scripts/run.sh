@@ -8,6 +8,6 @@ LAUNCH_DIR=$(pwd); SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; c
 
 cd $SCRIPT_DIR/..
 
-docker run -it --rm andriykalashnykov/apacheds-ad:latest
+docker run -it --rm -v ${PWD}/target/classes/:/ldap/ldif/ andriykalashnykov/apacheds-ad:latest 
 
 cd $LAUNCH_DIR

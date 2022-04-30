@@ -9,6 +9,6 @@ LAUNCH_DIR=$(pwd); SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; c
 cd $SCRIPT_DIR/..
 
 mvn clean install
-java -jar ./target/ldap-server.jar /ldap/ldif/
+java -jar ./target/ldap-server.jar ./target/classes/
 
 cd $LAUNCH_DIR

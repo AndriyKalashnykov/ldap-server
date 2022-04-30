@@ -58,7 +58,7 @@ mvn clean package
 ### How to run it
 
 ```bash
-java -jar ldap-server.jar [data.ldif]
+java -jar ./target/ldap-server.jar ./target/classes/
 ```
 
 #### Help
@@ -69,6 +69,7 @@ The ldap-server is a simple LDAP server implementation based on ApacheDS. It
 creates one user partition with root 'dc=jboss,dc=org'.
 
 Usage: java -jar ldap-server.jar [options] [LDIFs to import]
+
   Options:
     --allow-anonymous, -a
        allows anonymous bind to the server
@@ -104,6 +105,9 @@ Usage: java -jar ldap-server.jar [options] [LDIFs to import]
     --ssl-want-client-auth, -swc
        enables SSL 'wantClientAuth' flag
        Default: false
+
+   LDIFs to import: 
+       - if empty then default LDIFs are used, otherwise one or more LDIF files separated by comma will be imported
 
 Examples:
 
