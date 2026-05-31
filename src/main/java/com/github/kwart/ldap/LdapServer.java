@@ -18,7 +18,9 @@
  *
  */
 
-package org.jboss.test.ldap;
+package com.github.kwart.ldap;
+
+import static java.util.Objects.requireNonNull;
 
 import java.io.File;
 import java.io.FileFilter;
@@ -26,6 +28,11 @@ import java.io.FilenameFilter;
 import java.util.List;
 
 import org.apache.directory.api.ldap.model.entry.DefaultEntry;
+import org.apache.directory.api.ldap.model.entry.DefaultModification;
+import org.apache.directory.api.ldap.model.entry.Modification;
+import org.apache.directory.api.ldap.model.entry.ModificationOperation;
+import org.apache.directory.api.ldap.model.exception.LdapException;
+import org.apache.directory.api.ldap.model.ldif.ChangeType;
 import org.apache.directory.api.ldap.model.ldif.LdifEntry;
 import org.apache.directory.api.ldap.model.ldif.LdifReader;
 import org.apache.directory.api.ldap.model.name.Dn;
@@ -41,7 +48,7 @@ import org.apache.directory.server.protocol.shared.transport.TcpTransport;
  */
 public class LdapServer {
 
-    private static final String LDIF_FILENAME_JBOSS_ORG = "jboss-org.ldif";
+    private static final String DEFAULT_LDIF_FILENAME = "ldap-example.ldif";
 
     private final DirectoryService directoryService;
     private final org.apache.directory.server.ldap.LdapServer ldapServer;
@@ -59,14 +66,14 @@ public class LdapServer {
         final ExtCommander jCmd = new ExtCommander(cliArguments, args);
         jCmd.setProgramName("java -jar ldap-server.jar");
         jCmd.setUsageHead(
-                "The ldap-server is a simple LDAP server implementation based on ApacheDS. It creates one user partition with root 'dc=jboss,dc=org'.");
+                "The ldap-server is a simple LDAP server implementation based on ApacheDS. It creates one user partition with root 'dc=ldap,dc=example'.");
         jCmd.setUsageTail("Examples:\n\n" //
                 + "$ java -jar ldap-server.jar users.ldif\n" //
                 + " Starts LDAP server on port 10389 (all interfaces) and imports users.ldif\n\n" //
                 + "$ java -jar ldap-server.jar -sp 10636 users.ldif\n" //
                 + " Starts LDAP server on port 10389 and LDAPs on port 10636 and imports the LDIF\n\n" //
                 + "$ java -jar ldap-server.jar -b 127.0.0.1 -p 389\n" //
-                + " Starts LDAP server on address 127.0.0.1:389 and imports default data (one user entry 'uid=jduke,ou=Users,dc=jboss,dc=org'");
+                + " Starts LDAP server on address 127.0.0.1:389 and imports default data (one user entry 'uid=jduke,ou=Users,dc=ldap,dc=example'");
         if (cliArguments.isHelp()) {
             jCmd.usage();
             return;
@@ -82,6 +89,7 @@ public class LdapServer {
      * @throws Exception
      */
     public LdapServer(CLIArguments cliArguments) throws Exception {
+        requireNonNull(cliArguments, "The CLIArguments instance has to be provided");
         long startTime = System.currentTimeMillis();
 
         InMemoryDirectoryServiceFactory dsFactory = new InMemoryDirectoryServiceFactory();
@@ -92,6 +100,13 @@ public class LdapServer {
         directoryService.setAllowAnonymousAccess(cliArguments.isAllowAnonymous());
 //        directoryService.addLast(new CountLookupInterceptor());
         importLdif(cliArguments.getLdifFiles());
+        String customPassword = cliArguments.getAdminPassword();
+        if (customPassword != null) {
+            Modification replacePwd = new DefaultModification( ModificationOperation.REPLACE_ATTRIBUTE, "userPassword",
+                    customPassword );
+            Dn adminDn = directoryService.getDnFactory().create("uid=admin,ou=system");
+            directoryService.getAdminSession().modify(adminDn, replacePwd);
+        }
 
         ldapServer = new org.apache.directory.server.ldap.LdapServer();
         TcpTransport tcp = new TcpTransport(cliArguments.getBindAddress(), cliArguments.getPort());
@@ -125,13 +140,13 @@ public class LdapServer {
             System.out.println("          ldaps://" + formatPossibleIpv6(host) + ":" + cliArguments.getSslPort());
         }
         System.out.println("User DN:  uid=admin,ou=system");
-        System.out.println("Password: secret");
+        System.out.println("Password: " + (customPassword != null ? "***" : "secret"));
         System.out.println("LDAP server started in " + (System.currentTimeMillis() - startTime) + "ms");
     }
 
     /**
      * Stops LDAP server and the underlying directory service.
-     * 
+     *
      * @throws Exception
      */
     public void stop() throws Exception {
@@ -145,38 +160,54 @@ public class LdapServer {
      * @param files
      * @throws Exception
      */
-    private void importLdif(List<String> files) throws Exception {
-        if (files == null || files.isEmpty()) {
+    private void importLdif(List<String> ldifFiles) throws Exception {
+        if (ldifFiles == null || ldifFiles.isEmpty()) {
             System.out.println("Importing default data\n");
-            importLdif(new LdifReader(LdapServer.class.getResourceAsStream("/" + LDIF_FILENAME_JBOSS_ORG)));
+            importLdif(new LdifReader(LdapServer.class.getResourceAsStream("/" + DEFAULT_LDIF_FILENAME)));
         } else {
-            for (String file : files) {
+            for (String file : ldifFiles) {
                 File ldifFile = new File(file);
-                if (ldifFile.exists()) {
-                    if (ldifFile.isDirectory()) {
-                        System.out.println("Importing folder: " + ldifFile.getPath() + " \n");
-                        for (File importLdifFile : ldifFile.listFiles(new FilenameFilter() {
-                            public boolean accept(File dirFiles, String filename) {
-                                boolean endsWith = filename.toLowerCase().endsWith(".ldif");
-                                return endsWith;
-                            }
-                        })) {
-                            System.out.println("Importing file: " + importLdifFile.getPath() + "\n");
-                            try {
-                                importLdif(new LdifReader(importLdifFile.getPath()));
-                            }
-                            catch (Exception e) {
-                                System.out.println(e.toString() + "\n");
-                            }
+                if (!ldifFile.exists()) {
+                    continue;
+                }
+                if (ldifFile.isDirectory()) {
+                    System.out.println("Importing folder: " + ldifFile.getPath() + "\n");
+                    File[] entries = ldifFile.listFiles(new FilenameFilter() {
+                        public boolean accept(File dir, String name) {
+                            return name.toLowerCase().endsWith(".ldif");
+                        }
+                    });
+                    if (entries == null) {
+                        continue;
+                    }
+                    for (File f : entries) {
+                        System.out.println("Importing file: " + f.getPath() + "\n");
+                        try {
+                            importLdif(newLdifReader(f.getPath()));
+                        } catch (Exception e) {
+                            System.out.println(e.toString() + "\n");
                         }
                     }
-                    else {
-                        System.out.println("Importing file: " + ldifFile.getPath() + "\n");
-                        importLdif(new LdifReader(ldifFile.getPath()));
-                    }
+                } else {
+                    System.out.println("Importing file: " + ldifFile.getPath() + "\n");
+                    importLdif(newLdifReader(ldifFile.getPath()));
                 }
             }
         }
+    }
+
+    private LdifReader newLdifReader(String path) throws Exception {
+        return new LdifReader(path) {
+            @Override
+            protected LdifEntry parseEntry() throws LdapException {
+                // Workaround for limitation in LdifReader, which fails
+                // to parse LDIF files with multiple entries, when at
+                // least one of them has a changetype entry
+                this.containsChanges = false;
+                this.containsEntries = false;
+                return super.parseEntry();
+            }
+        };
     }
 
     private void importLdif(LdifReader ldifReader) throws Exception {
@@ -184,8 +215,15 @@ public class LdapServer {
             for (LdifEntry ldifEntry : ldifReader) {
                 checkPartition(ldifEntry);
                 System.out.print(ldifEntry.toString());
-                directoryService.getAdminSession()
-                        .add(new DefaultEntry(directoryService.getSchemaManager(), ldifEntry.getEntry()));
+                if (ldifEntry.getChangeType() == ChangeType.Modify) {
+                    directoryService.getAdminSession().modify(ldifEntry.getDn(), ldifEntry.getModifications());
+                } else if (ldifEntry.getChangeType() == ChangeType.None || ldifEntry.getChangeType() == ChangeType.Add ) {
+                    directoryService.getAdminSession()
+                            .add(new DefaultEntry(directoryService.
+                                    getSchemaManager(), ldifEntry.getEntry()));
+                } else {
+                    throw new IllegalStateException("Unknown change type: " + ldifEntry.getChangeType());
+                }
             }
         } finally {
             IOUtils.closeQuietly(ldifReader);

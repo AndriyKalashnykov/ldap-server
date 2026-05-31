@@ -62,11 +62,14 @@ java -jar ./target/ldap-server.jar ./target/classes/
 ```
 $ java -jar target/ldap-server.jar --help
 The ldap-server is a simple LDAP server implementation based on ApacheDS. It
-creates one user partition with root 'dc=jboss,dc=org'.
+creates one user partition with root 'dc=ldap,dc=example'.
 
 Usage: java -jar ldap-server.jar [options] [file1.ldif file2.ldif | /path/to/ldifs]
 
   Options:
+    --admin-password, -ap
+       changes password for account 'uid=admin,ou=system' (default password is
+       'secret')
     --allow-anonymous, -a
        allows anonymous bind to the server
        Default: false
@@ -117,7 +120,7 @@ Starts LDAP server on port 10389 and LDAPs on port 10636 and imports the LDIF
 
 $ java -jar ./target/ldap-server.jar -b 127.0.0.1 -p 389
 Starts LDAP server on address 127.0.0.1:389 and imports default data (one user
-entry 'uid=jduke,ou=Users,dc=jboss,dc=org'
+entry 'uid=jduke,ou=Users,dc=ldap,dc=example'
 ```
 
 #### SSL/TLS
@@ -138,17 +141,17 @@ java -Djavax.net.debug=all -jar target/ldap-server.jar -sp 1038389 -skf /tmp/lda
 ```
 version: 1
 
-dn: dc=jboss,dc=org
-dc: jboss
+dn: dc=ldap,dc=example
+dc: ldap
 objectClass: top
 objectClass: domain
 
-dn: ou=Users,dc=jboss,dc=org
+dn: ou=Users,dc=ldap,dc=example
 objectClass: organizationalUnit
 objectClass: top
 ou: Users
 
-dn: uid=jduke,ou=Users,dc=jboss,dc=org
+dn: uid=jduke,ou=Users,dc=ldap,dc=example
 objectClass: top
 objectClass: person
 objectClass: inetOrgPerson
@@ -157,16 +160,66 @@ sn: duke
 uid: jduke
 userPassword: theduke
 
-dn: ou=Roles,dc=jboss,dc=org
+dn: ou=Roles,dc=ldap,dc=example
 objectclass: top
 objectclass: organizationalUnit
 ou: Roles
 
-dn: cn=Admin,ou=Roles,dc=jboss,dc=org
+dn: cn=Admin,ou=Roles,dc=ldap,dc=example
 objectClass: top
 objectClass: groupOfNames
 cn: Admin
-member: uid=jduke,ou=Users,dc=jboss,dc=org
+member: uid=jduke,ou=Users,dc=ldap,dc=example
+```
+
+## Deploy/Release
+
+Deploy snapshots
+
+```
+mvn clean install deploy
+```
+
+Release
+
+```
+mvn -Prelease release:prepare
+mvn -Prelease release:perform
+```
+
+## Sample usage (LDAP search)
+
+The `ldapsearch` Linux tool is used in the following examples:
+
+```bash
+$ # Anonymous LDAP search
+$ # the 172.17.0.2 is the IP address of the kwart/ldap-server docker container
+$  ldapsearch -x -b "dc=ldap,dc=example" -LL -H ldap://172.17.0.2 | head -n 13 
+version: 1
+
+dn: ou=Roles,dc=ldap,dc=example
+ou: Roles
+objectclass: top
+objectclass: organizationalUnit
+
+dn: cn=Admin,ou=Roles,dc=ldap,dc=example
+cn: Admin
+objectclass: top
+objectclass: groupOfNames
+member: uid=jduke,ou=Users,dc=ldap,dc=example
+
+$ # LDAP search with a user authentication:
+$ ldapsearch -x -b "dc=ldap,dc=example" -LL -H ldap://172.17.0.2 -D "uid=jduke,ou=Users,dc=ldap,dc=example" -w theduke | tail -n 10
+dn: dc=ldap,dc=example
+dc: ldap
+objectclass: top
+objectclass: domain
+
+dn: ou=Users,dc=ldap,dc=example
+ou: Users
+objectclass: top
+objectclass: organizationalUnit
+
 ```
 
 ## License
