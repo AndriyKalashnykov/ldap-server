@@ -12,7 +12,7 @@ This repo is a **fork of [intoolswetrust/ldap-server](https://github.com/intools
 
 ## Build, run, test
 
-JDK 21 LTS + Maven 3.9.16, both pinned in [`.mise.toml`](.mise.toml). `make deps` installs mise on first run, then `mise install` provisions the toolchain.
+JDK 25 LTS + Maven 3.9.16, both pinned in [`.mise.toml`](.mise.toml). `make deps` installs mise on first run, then `mise install` provisions the toolchain.
 
 ```bash
 make deps                                            # one-time mise + Java/Maven bootstrap
@@ -25,7 +25,7 @@ java -jar ./target/ldap-server.jar --help            # full CLI flag list (inclu
 
 `make ci` chains `deps → check-java-alignment → check-maven-alignment → lint → test → package`. The two alignment guards fail fast when the Java major in `.mise.toml` drifts from the Dockerfile `FROM` lines, or when the Maven minor drifts from the build-stage tag — silent toolchain desync is otherwise a recurring foot-gun on Renovate split-PR days. Both guards are mutation-tested (proven to go RED on intentional desync).
 
-`pom.xml` sets `maven.compiler.source=21` (matches the Dockerfile runtime `eclipse-temurin:21-jre`). AM27 itself ships bytecode 52 (Java 8) but our application can target whatever runtime we deploy on — the dep's floor does not constrain the consumer's target. The `release` profile that enforced `[1.8,1.9)` was removed in this fork; re-add it from upstream if Maven Central publishing is ever wanted.
+`pom.xml` sets `maven.compiler.source=25` (matches the Dockerfile runtime `eclipse-temurin:25-jre`). AM27 itself ships bytecode 52 (Java 8) but our application can target whatever runtime we deploy on — the dep's floor does not constrain the consumer's target. The `release` profile that enforced `[1.8,1.9)` was removed in this fork; re-add it from upstream if Maven Central publishing is ever wanted.
 
 ### Tests
 
@@ -61,8 +61,8 @@ Entry point is `com.github.kwart.ldap.LdapServer#main`, declared as the shaded J
 
 Multi-stage Dockerfile, builds from source — does NOT download a released JAR.
 
-- **Builder**: `maven:3.9-eclipse-temurin-21` runs `mvn -B -DskipTests clean package` with a BuildKit cache mount on `~/.m2`.
-- **Runtime**: `eclipse-temurin:21-jre-alpine` (alpine variant; ~41 MB `/usr`, no Go binaries to drag in stdlib CVEs, Trivy-clean at time of switch). Non-root user UID/GID 10001 (created via busybox `addgroup`/`adduser`, no home, `/sbin/nologin` shell). Owns `/ldap`.
+- **Builder**: `maven:3.9-eclipse-temurin-25` runs `mvn -B -DskipTests clean package` with a BuildKit cache mount on `~/.m2`.
+- **Runtime**: `eclipse-temurin:25-jre-alpine` (alpine variant; ~41 MB `/usr`, no Go binaries to drag in stdlib CVEs, Trivy-clean at time of switch). Non-root user UID/GID 10001 (created via busybox `addgroup`/`adduser`, no home, `/sbin/nologin` shell). Owns `/ldap`.
 - **HEALTHCHECK**: `nc -z ${HEALTHCHECK_HOST} ${APP_INTERNAL_PORT}` — busybox netcat is bundled with alpine; no extra package install needed. Probes the LDAP TCP listener since ApacheDS exposes only the LDAP protocol (no HTTP `/healthz`). The previous `bash -c 'exec 3<>/dev/tcp/...'` form was Ubuntu-base specific; alpine's busybox sh has no `/dev/tcp`. **No `apk add` in the runtime layer.**
 - **`HEALTHCHECK` flag timings are LITERAL** (`--interval=30s --timeout=3s --start-period=20s --retries=3`) because Docker's parser does NOT expand ARG/ENV in those slots. The CMD's `${VAR}` expand at container start, so `HEALTHCHECK_HOST` and `APP_INTERNAL_PORT` honor `docker run -e ...` overrides.
 - **CMD**: shell form so `${APP_INTERNAL_PORT}` is honored — `java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT} /ldap/ldif/`.

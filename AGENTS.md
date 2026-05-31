@@ -10,7 +10,7 @@ Single-JAR, in-memory LDAP server built on top of **ApacheDS 2.0.0.AM27**, inten
 
 ## Build & test
 
-JDK 21 LTS + Maven 3.9.x, both pinned in [`.mise.toml`](.mise.toml). `make deps` installs mise on first run, then `mise install` provisions the toolchain.
+JDK 25 LTS + Maven 3.9.x, both pinned in [`.mise.toml`](.mise.toml). `make deps` installs mise on first run, then `mise install` provisions the toolchain.
 
 - Bootstrap toolchain: `make deps` (one-time mise + Java/Maven install).
 - Full local CI: `make ci` → `deps → check-java-alignment → check-maven-alignment → lint → test → package`. The two alignment guards fail fast when the Java major in `.mise.toml` drifts from the Dockerfile `FROM` lines, or the Maven minor drifts from the build-stage tag.
@@ -21,7 +21,7 @@ JDK 21 LTS + Maven 3.9.x, both pinned in [`.mise.toml`](.mise.toml). `make deps`
 - Run the built jar: `java -jar target/ldap-server.jar [options] [LDIFs...]` — see `--help` for the full CLI (includes `--admin-password`, `--ssl-*`, `--allow-anonymous`).
 - CVE scan: `make cve-check` (OWASP dependency-check; ~2 GB NVD cold start, `NVD_API_KEY` strongly recommended).
 
-`pom.xml` sets `maven.compiler.source=21` (matches the `eclipse-temurin:21-jre` runtime). AM27 ships bytecode 52 (Java 8) but the consumer can target whatever runtime it deploys on. Dependency bumps are handled by **Renovate** — there is **no Maven Central publishing** in this fork (the upstream `release` profile with GPG signing, `nexus-staging-maven-plugin`, and the `[1.8,1.9)` Java enforcer was removed; re-add from upstream only if Central publishing is ever wanted).
+`pom.xml` sets `maven.compiler.source=25` (matches the `eclipse-temurin:25-jre` runtime). AM27 ships bytecode 52 (Java 8) but the consumer can target whatever runtime it deploys on. Dependency bumps are handled by **Renovate** — there is **no Maven Central publishing** in this fork (the upstream `release` profile with GPG signing, `nexus-staging-maven-plugin`, and the `[1.8,1.9)` Java enforcer was removed; re-add from upstream only if Central publishing is ever wanted).
 
 ## Architecture
 
@@ -64,8 +64,8 @@ Each test starts a real LDAP server on `10389` (and a TLS port for TLS variants)
 
 Multi-stage `Dockerfile`, **builds from source** (does not download a released JAR):
 
-- **Builder**: `maven:3.9-eclipse-temurin-21` runs `mvn -B -DskipTests clean package` with a BuildKit cache mount on `~/.m2`.
-- **Runtime**: `eclipse-temurin:21-jre-alpine`. Non-root user UID/GID 10001 (busybox `addgroup`/`adduser`, no home, `/sbin/nologin`), owns `/ldap`. No `apk add` in the runtime layer.
+- **Builder**: `maven:3.9-eclipse-temurin-25` runs `mvn -B -DskipTests clean package` with a BuildKit cache mount on `~/.m2`.
+- **Runtime**: `eclipse-temurin:25-jre-alpine`. Non-root user UID/GID 10001 (busybox `addgroup`/`adduser`, no home, `/sbin/nologin`), owns `/ldap`. No `apk add` in the runtime layer.
 - **HEALTHCHECK**: `nc -z ${HEALTHCHECK_HOST} ${APP_INTERNAL_PORT}` (busybox netcat) — probes the LDAP TCP listener since ApacheDS exposes no HTTP endpoint. The flag *timings* are literal because Docker's parser does not expand ARG/ENV in those slots; the CMD's `${VAR}` honor `docker run -e ...` overrides.
 - **CMD** (shell form): `java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT} /ldap/ldif/`. Mount a directory of `.ldif` files into `/ldap/ldif/` to seed entries.
 
