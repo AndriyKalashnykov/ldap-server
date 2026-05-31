@@ -24,11 +24,16 @@ LDAP_PORT          ?= 10389
 LDAPS_PORT         ?=
 BIND_ADDRESS       ?= 0.0.0.0
 
+# Container-internal port (matches the Dockerfile's APP_INTERNAL_PORT ARG default).
+# Override to bake a different default into the image at build time:
+#   make docker-build APP_INTERNAL_PORT=10399
+APP_INTERNAL_PORT  ?= 10389
+
 #help: @ List available tasks
 help:
 	@echo "Usage: make COMMAND"
 	@echo "Commands :"
-	@grep -E '[a-zA-Z\.\-]+:.*?@ .*$$' $(MAKEFILE_LIST) | tr -d '#' | awk 'BEGIN {FS = ":.*?@ "}; {printf "\033[32m%-16s\033[0m - %s\n", $$1, $$2}'
+	@grep -E '[a-zA-Z\.\-]+:.*?@ .*$$' $(MAKEFILE_LIST) | tr -d '#' | awk 'BEGIN {FS = ":.*?@ "}; {printf "\033[32m%-18s\033[0m - %s\n", $$1, $$2}'
 
 #deps: @ Install Java + Maven via mise (reads .mise.toml)
 deps:
@@ -78,18 +83,47 @@ lint: deps
 clean:
 	@mvn -B clean -q
 
-#docker-build: @ Build the Docker image as $(IMAGE_REF)
+#docker-build: @ Build the Docker image as $(IMAGE_REF) (multi-stage, from src/)
 docker-build:
 	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
-	@DOCKER_BUILDKIT=1 docker build -f Dockerfile -t "$(IMAGE_REF)" .
+	@DOCKER_BUILDKIT=1 docker build -f Dockerfile \
+		--build-arg APP_INTERNAL_PORT=$(APP_INTERNAL_PORT) \
+		-t "$(IMAGE_REF)" .
 
 #docker-run: @ Run the image, mounting $(LDIF_DIR) into /ldap/ldif/
 docker-run:
 	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
 	@docker run -it --rm \
 		-v "$$PWD/$(LDIF_DIR):/ldap/ldif/" \
-		-p "$(LDAP_PORT):10389" \
+		-p "$(LDAP_PORT):$(APP_INTERNAL_PORT)" \
 		"$(IMAGE_REF)"
+
+#docker-smoke-test: @ Boot the image and wait for its HEALTHCHECK to report healthy
+docker-smoke-test:
+	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+	@set -eu; \
+	CONTAINER=ldap-server-smoke; \
+	docker rm -f "$$CONTAINER" >/dev/null 2>&1 || true; \
+	trap 'docker rm -f "'"$$CONTAINER"'" >/dev/null 2>&1 || true' EXIT INT TERM; \
+	docker run -d --name="$$CONTAINER" "$(IMAGE_REF)" >/dev/null; \
+	echo "Waiting up to 90s for HEALTHCHECK to report healthy..."; \
+	end=$$(( $$(date +%s) + 90 )); status=""; \
+	while [ "$$(date +%s)" -lt "$$end" ]; do \
+		status=$$(docker inspect -f '{{.State.Health.Status}}' "$$CONTAINER" 2>/dev/null || echo unknown); \
+		if [ "$$status" = "healthy" ]; then \
+			echo "PASS: $$CONTAINER reports healthy"; \
+			exit 0; \
+		fi; \
+		if [ "$$(docker inspect -f '{{.State.Running}}' "$$CONTAINER" 2>/dev/null)" != "true" ]; then \
+			echo "FAIL: $$CONTAINER exited before becoming healthy"; \
+			docker logs "$$CONTAINER" 2>&1 | tail -30; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "FAIL: $$CONTAINER did not become healthy within 90s (last status: $$status)"; \
+	docker logs "$$CONTAINER" 2>&1 | tail -30; \
+	exit 1
 
 #docker-login: @ Log into $(DOCKER_REGISTRY) using DOCKER_LOGIN + $$DOCKER_PWD (from env or .env)
 docker-login:
@@ -118,4 +152,4 @@ ci-run:
 		--artifact-server-path "$$ARTIFACT_PATH"
 
 .PHONY: help deps deps-check build test package run-jar lint clean \
-	docker-build docker-run docker-login docker-push ci ci-run
+	docker-build docker-run docker-smoke-test docker-login docker-push ci ci-run

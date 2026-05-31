@@ -1,0 +1,36 @@
+# Build outputs (Docker builds JAR fresh from src/)
+target/
+
+# VCS
+.git/
+.gitignore
+.gitattributes
+
+# IDE / tooling
+.vscode/
+.idea/
+*.iml
+
+# CI / repo metadata (not needed by the image)
+.github/
+.mise.toml
+.env.example
+.env
+.travis.yml
+
+# Legacy / docs / Docker self-references
+scripts/
+*.md
+AGENTS.md
+Dockerfile
+.dockerignore
+
+# Renovate / Claude
+renovate.json
+CLAUDE.md
+.claude/
+.claudeignore
+
+# OS junk
+.DS_Store
+Thumbs.db

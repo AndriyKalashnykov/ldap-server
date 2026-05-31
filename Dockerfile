@@ -1,34 +1,80 @@
-# FROM openjdk:11-jre
-# RUN apt-get update && apt-get upgrade --yes && apt-get install openssl --yes && apt-get clean autoclean && apt-get autoremove --yes && rm -rf /var/lib/{apt,dpkg,cache,log}/
+# syntax=docker/dockerfile:1.7
 
-# https://hub.docker.com/_/openjdk?tab=tags&page=1&name=18
-FROM  openjdk:18.0.1-oracle
+# =============================================================================
+# Build stage — compile shaded JAR from source
+# =============================================================================
+# The official Maven + Temurin 21 image — mvn + JDK in one layer.
+# Renovate-tracked via the `dockerfile` manager.
+FROM maven:3.9-eclipse-temurin-21 AS build
 
-LABEL maintainer="AndriyKalashnykov@gmail.com"
+WORKDIR /workspace
 
-RUN microdnf install openssl wget
+# Layer-cache deps before sources so a no-source change doesn't redownload.
+COPY pom.xml ./
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -B -e -ntp -DskipTests dependency:go-offline
 
-RUN mkdir -p /ldap/ldif
+COPY src ./src
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -B -e -ntp -DskipTests clean package
+
+# Sanity: the shaded JAR is what `make package` produces locally.
+RUN test -s /workspace/target/ldap-server.jar
+
+
+# =============================================================================
+# Runtime stage — slim JRE, non-root, env-driven tunables
+# =============================================================================
+FROM eclipse-temurin:21-jre
+
+# === Operator tunables (slot 2 — ARG defaults; see configuration.md) ===
+ARG APP_INTERNAL_PORT=10389
+ARG HEALTHCHECK_HOST=localhost
+ARG APP_UID=10001
+ARG APP_GID=10001
+
+# Promote tunable ARGs to ENV so:
+#   - HEALTHCHECK CMD's shell-time expansion sees HEALTHCHECK_HOST + APP_INTERNAL_PORT
+#   - The entrypoint's `-p ${APP_INTERNAL_PORT}` honors `docker run -e ...` overrides
+# HEALTHCHECK flag timings (interval/timeout/...) are LITERAL — Docker's parser
+# does not expand ARG/ENV in those slots — so they're hardcoded below.
+ENV APP_INTERNAL_PORT=${APP_INTERNAL_PORT} \
+    HEALTHCHECK_HOST=${HEALTHCHECK_HOST}
+
+LABEL maintainer="AndriyKalashnykov@gmail.com" \
+      org.opencontainers.image.source="https://github.com/AndriyKalashnykov/ldap-server" \
+      org.opencontainers.image.description="In-memory LDAP server based on ApacheDS"
+
+# Non-root user. /usr/sbin/nologin denies interactive shells; no home dir
+# minimizes attack surface.
+RUN groupadd --system --gid ${APP_GID} ldap \
+ && useradd  --system --uid ${APP_UID} --gid ${APP_GID} \
+        --no-create-home --shell /usr/sbin/nologin ldap
+
+RUN mkdir -p /ldap/ldif \
+ && chown -R ${APP_UID}:${APP_GID} /ldap
+
 WORKDIR /ldap
 
-# RUN wget https://github.com/AndriyKalashnykov/ldap-server/releases/download/2021-04-07/ldap-server.jar
+COPY --from=build --chown=${APP_UID}:${APP_GID} \
+     /workspace/target/ldap-server.jar /ldap/ldap-server.jar
 
-# followint line skips caching of downloaded ldap-server.jar
-ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
-RUN wget --timeout=600 https://github.com/AndriyKalashnykov/ldap-server/releases/download/latest/ldap-server.jar
+USER ${APP_UID}
 
-RUN useradd -r -M -d  /ldap ldap && \
-    chown -R ldap:ldap /ldap && \
-    chown -h ldap:ldap /ldap
+EXPOSE ${APP_INTERNAL_PORT}
 
-USER ldap
+# ApacheDS exposes only the LDAP protocol — no HTTP /healthz. Probe the
+# TCP listener via bash's /dev/tcp (bundled with eclipse-temurin's bash;
+# no apt-install of nc / curl needed). HEALTHCHECK flag values are
+# literal — Docker's parser does NOT expand ARG/ENV in --interval/etc.,
+# so timings are hardcoded here. The CMD's `${VAR}` expand at container
+# start, so HEALTHCHECK_HOST / APP_INTERNAL_PORT honor `docker run -e`.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+    CMD bash -c 'exec 3<>/dev/tcp/${HEALTHCHECK_HOST}/${APP_INTERNAL_PORT}' || exit 1
 
-# COPY ./ldif/users.ldif /ldap/ldif/users.ldif
-
-EXPOSE 10389
-
-# so we can mount any directory to `/ldap/ldif/` directoy to import LDIFs
-# i.e.
-# volumes:
-#   - ./ldif:/ldap/ldif 
-CMD ["java","-jar","ldap-server.jar", "/ldap/ldif/"]
+# Mount any directory with `.ldif` files to /ldap/ldif/ to seed the server,
+# e.g. `docker run -v ./ldif:/ldap/ldif/ ...`. An empty mount leaves the
+# server running with no entries (it does NOT fall back to bundled defaults
+# when an empty `--ldifs` arg is supplied — that's a regression from no-arg
+# invocation, but matches the legacy Dockerfile's behavior).
+CMD java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT} /ldap/ldif/

@@ -117,15 +117,17 @@ jobs:
           files: ldap-server.jar
 
   # Build + push the Docker image to Docker Hub on v* tag pushes only
-  # (preserves legacy behavior). `needs: [release]` so the Dockerfile's
-  # wget of the `latest` release JAR sees the freshly recreated asset.
+  # (preserves legacy behavior). The multi-stage Dockerfile builds the JAR
+  # from source — no dependency on the `release` job's GH Release upload.
+  # Pre-push gates: Trivy image scan (CRITICAL/HIGH blocking) + smoke test
+  # via `make docker-smoke-test` (HEALTHCHECK must report healthy).
   docker:
-    needs: [release]
+    needs: [build]
     if: |
       !failure() && !cancelled() &&
       github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -145,6 +147,33 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest
 
+      # ---- GATE 1: build single-arch into the local daemon for scanning
+      - name: Build image for scan
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: apacheds-ad:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---- GATE 2: Trivy image scan (CRITICAL/HIGH blocking)
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: 'apacheds-ad:scan'
+          scanners: 'vuln,secret,misconfig'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          ignore-unfixed: true
+
+      # ---- GATE 3: smoke test — boot the image, wait for HEALTHCHECK = healthy
+      - name: Smoke test
+        run: make docker-smoke-test IMAGE_REF=apacheds-ad:scan
+
+      # ---- All gates passed: log in + push (second build = ~full cache hit)
       - name: Log in to Docker Hub
         uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
         with:
@@ -160,6 +189,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
