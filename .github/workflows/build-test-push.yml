@@ -130,17 +130,30 @@ jobs:
           path: ~/.m2/repository
           key: maven-${{ hashFiles('pom.xml') }}
           restore-keys: maven-
+      # The NVD vuln DB is independent of pom.xml, so key it on the ISO week
+      # (not hashFiles('pom.xml')) — a version bump must not evict the DB and
+      # force a cold ~30-min fetch. The plugin tops up the delta each run, and
+      # restore-keys falls back to the most recent week's DB as a warm baseline.
+      - name: Compute weekly NVD cache key
+        id: nvdcache
+        run: echo "week=$(date -u +%Y-%V)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.m2/repository/org/owasp/dependency-check-data
-          key: nvd-db-${{ hashFiles('pom.xml') }}
+          key: nvd-db-${{ steps.nvdcache.outputs.week }}
           restore-keys: nvd-db-
       - name: OWASP dependency check
-        # NVD_API_KEY is optional; without it lookups are rate-limited.
-        # Route the key through ~/.m2/settings.xml so the value never enters argv
-        # — see the Makefile cve-check recipe for the printf + umask 077 form.
+        # NVD_API_KEY is strongly recommended (without it the NVD update fails
+        # under anonymous rate-limiting). OSS_INDEX_USER/OSS_INDEX_TOKEN enable
+        # the Sonatype OSS Index analyzer — token auth is now mandatory, so
+        # without them that analyzer is silently disabled (warning only) and
+        # coverage drops to NVD-only. All three are routed through
+        # ~/.m2/settings.xml server-ids by the Makefile recipe (printf + umask
+        # 077); no value ever enters argv.
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+          OSS_INDEX_USER: ${{ secrets.OSS_INDEX_USER }}
+          OSS_INDEX_TOKEN: ${{ secrets.OSS_INDEX_TOKEN }}
         run: make cve-check
       - name: Upload CVE report
         # always() so the report uploads even when the scan step fails;

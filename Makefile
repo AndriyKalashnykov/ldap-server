@@ -138,14 +138,25 @@ lint: deps
 # in argv. NEVER pass `-DnvdApiKey=$$NVD_API_KEY` directly — leaks via
 # `ps -ef` / `/proc/<pid>/cmdline` for the entire ~30 min plugin lifetime.
 cve-check: deps
-	@if [ -n "$${NVD_API_KEY:-}" ]; then \
-		mkdir -p "$$HOME/.m2"; \
-		( umask 077 && printf '<settings><servers><server><id>nvd</id><password>%s</password></server></servers></settings>\n' "$$NVD_API_KEY" > "$$HOME/.m2/settings.xml" ); \
-		mvn -B org.owasp:dependency-check-maven:check -DnvdApiServerId=nvd; \
+	@mkdir -p "$$HOME/.m2"
+	@servers=""; mvn_args=""; \
+	if [ -n "$${NVD_API_KEY:-}" ]; then \
+		servers="$$servers<server><id>nvd</id><password>$${NVD_API_KEY}</password></server>"; \
+		mvn_args="-DnvdApiServerId=nvd"; \
 	else \
 		echo "Note: NVD_API_KEY not set — NVD lookups will be rate-limited."; \
-		mvn -B org.owasp:dependency-check-maven:check; \
-	fi
+	fi; \
+	if [ -n "$${OSS_INDEX_USER:-}" ] && [ -n "$${OSS_INDEX_TOKEN:-}" ]; then \
+		servers="$$servers<server><id>ossindex</id><username>$${OSS_INDEX_USER}</username><password>$${OSS_INDEX_TOKEN}</password></server>"; \
+		mvn_args="$$mvn_args -DossIndexServerId=ossindex"; \
+	else \
+		echo "Note: OSS_INDEX_USER/OSS_INDEX_TOKEN not set — Sonatype OSS Index analyzer disabled (token auth is now mandatory)."; \
+	fi; \
+	( umask 077 && printf '<settings><servers>%s</servers></settings>\n' "$$servers" > "$$HOME/.m2/settings.xml" ); \
+	mvn -B org.owasp:dependency-check-maven:check $$mvn_args
+	@# Secrets are written ONLY into ~/.m2/settings.xml (umask 077) and passed
+	@# to the plugin by server id (-DnvdApiServerId / -DossIndexServerId); no
+	@# secret value ever appears in argv. `$$VAR` defers expansion to the shell.
 
 #clean: @ Remove Maven build artifacts
 clean:
