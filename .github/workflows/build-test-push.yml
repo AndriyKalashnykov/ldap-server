@@ -1,102 +1,185 @@
-# This workflow will build a Java project with Maven
-# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-maven
-
-name: build-test-push
+name: CI
 
 on:
   push:
     branches: [master]
     tags: ['v*']
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  build:
-
+  # Paths-filter detector (skill §15 BLOCKING). Doc-only PRs skip heavy jobs;
+  # `code=false` cascades into the build/release/docker `if:` gates below.
+  changes:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      pull-requests: read       # required by dorny/paths-filter on PR events
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
     steps:
-    - name: Download repository
-      uses: actions/checkout@v3.0.2
-      
-    - name: Set up JDK 18
-      uses: actions/setup-java@v3.2.0
-      with:
-        distribution: 'temurin'
-        java-version: 18
- 
-    - name: Cache Maven packages
-      uses: actions/cache@v3.0.2
-      with:
-        path: ~/.m2
-        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-        restore-keys: ${{ runner.os }}-m2
-      
-    - name: Test with Maven
-      run: mvn -B test --file pom.xml
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          # base: only set on push (skill §15e — act compatibility + PR-event annotation avoidance)
+          base: ${{ github.event_name == 'push' && 'master' || '' }}
+          filters: |
+            code:
+              - '!(**.md|docs/**|specs/**|LICENSE|.gitignore|.claudeignore|.claude/**|benchmarks/**|**.png|**.jpg|**.gif|**.svg)'
+              - 'CLAUDE.md'
 
-    - name: Build project # This would actually build your project, using zip for an example artifact
-      run: |
-        mvn clean package install
+  # Single composite Maven job. The Makefile's `make ci` chains
+  # deps -> lint -> test -> package, so splitting into separate
+  # static-check / build / test jobs would re-run `mvn` three times
+  # with no parallelism benefit on this code size. Uploads the shaded
+  # JAR for the release + docker jobs to consume.
+  build:
+    needs: [changes]
+    # `!failure() && !cancelled()` (skill §"Explicit if: strips the implicit
+    # success check") — `success()` would be false on `changes=false` (a
+    # legitimately-skipped doc-only PR), causing this job to skip too.
+    if: |
+      !failure() && !cancelled() &&
+      (needs.changes.outputs.code == 'true' || startsWith(github.ref, 'refs/tags/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
-    # - uses: dev-drprasad/delete-tag-and-release@v0.2.0
-    #   with:
-    #     delete_release: true # default: false
-    #     tag_name: latest
-    #   env:
-    #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - name: Delete latest release
-      uses: ame-yu/action-delete-latest-release@v2
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: latest
-        release_name: Latest
-        draft: false
-        prerelease: false
-    - name: Upload Release Asset
-      id: upload-release-asset
-      uses: actions/upload-release-asset@v1.0.2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-        asset_path: ./target/ldap-server.jar
-        asset_name: ldap-server.jar
-        asset_content_type: application/java-archive
+      - uses: jdx/mise-action@c53b9236f0b3370f31520f8b142f141256d839c6 # v3.6.0
+        with:
+          install: true
+          cache: true
 
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v1.2.0
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1.7.0
-    - name: Cache Docker layers
-      uses: actions/cache@v3.0.2
-      with:
-        path: /tmp/.buildx-cache
-        key: ${{ runner.os }}-buildx-${{ github.sha }}
-        restore-keys: |
-          ${{ runner.os }}-buildx-
-    - name: Login to DockerHub
-      if: github.ref_type == 'tag'
-      uses: docker/login-action@v1
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-    - name: Build and push
-      uses: docker/build-push-action@v2.10.0
-      with:
-        context: .
-        file: ./Dockerfile
-        platforms: linux/amd64
-        push: ${{ github.ref_type == 'tag' }}
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/apacheds-ad:latest
-        cache-from: ${{ secrets.DOCKERHUB_USERNAME }}/apacheds-ad-cache
-        cache-to: ${{ secrets.DOCKERHUB_USERNAME }}/apacheds-ad-cache
+      # mise-action caches the toolchain; Maven downloads are separate.
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ hashFiles('pom.xml') }}
+          restore-keys: maven-
+
+      - name: CI (lint + test + package)
+        run: make ci
+
+      - name: Upload shaded JAR
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ldap-server-jar
+          path: target/ldap-server.jar
+          retention-days: 7
+          if-no-files-found: error
+
+  # Recreate the `latest` GitHub Release with the freshly built JAR.
+  # Fires on EVERY push to master and EVERY v* tag — same behavior as
+  # the legacy workflow. Tag pushes need this to run BEFORE `docker`
+  # because the current Dockerfile wgets the JAR from the `latest`
+  # release at image-build time (/harden-image-pipeline will switch
+  # this to a multi-stage build-from-source).
+  release:
+    needs: [build]
+    if: |
+      !failure() && !cancelled() &&
+      github.event_name == 'push' && (
+        github.ref == 'refs/heads/master' ||
+        startsWith(github.ref, 'refs/tags/')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write       # create + replace the `latest` GitHub Release
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ldap-server-jar
+
+      - name: Recreate `latest` release with the fresh JAR
+        # softprops/action-gh-release replaces the deprecated
+        # actions/create-release + actions/upload-release-asset combo.
+        # `make_latest: true` + `tag_name: latest` overwrites the
+        # existing `latest` release and its assets — the same outcome
+        # the legacy delete-then-recreate sequence produced.
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
+        with:
+          tag_name: latest
+          name: Latest
+          draft: false
+          prerelease: false
+          make_latest: 'true'
+          files: ldap-server.jar
+
+  # Build + push the Docker image to Docker Hub on v* tag pushes only
+  # (preserves legacy behavior). `needs: [release]` so the Dockerfile's
+  # wget of the `latest` release JAR sees the freshly recreated asset.
+  docker:
+    needs: [release]
+    if: |
+      !failure() && !cancelled() &&
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/apacheds-ad
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Single branch-protection check that aggregates the per-job results.
+  # Treats `skipped` as pass (doc-only PRs, master pushes that don't fire
+  # docker, etc.) and only fails on `failure` or `cancelled`.
+  ci-pass:
+    if: always()
+    needs: [changes, build, release, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify all jobs passed (or skipped)
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "One or more required jobs failed"
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more required jobs were cancelled"
+            exit 1
+          fi
+          echo "All required jobs passed or were skipped."
