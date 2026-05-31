@@ -183,6 +183,12 @@ Run `make help` to see every target with its description.
 | `make ci` | Full local CI pipeline: `deps → toolchain-alignment → lint → test → package` |
 | `make ci-run` | Run the GitHub Actions workflow locally via [act](https://github.com/nektos/act) — exercises `changes` + `build` + `ci-pass` only; the tag-only `docker` + `cve-check` + `release` paths need a real GitHub event context |
 
+### Utilities
+
+| Target | Description |
+|--------|-------------|
+| `make renovate-validate` | Validate `renovate.json` against the live Renovate config schema (`npx renovate-config-validator`) |
+
 ## Configuration
 
 Every operator-tunable value is sourced from env vars with `?=` fallbacks in the Makefile. Copy `.env.example` to `.env` and override per host — `make` picks up overrides automatically.
