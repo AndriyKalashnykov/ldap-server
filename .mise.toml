@@ -1,0 +1,12 @@
+# mise reads this on `cd` (when shell-activated) and on `mise install`.
+# CI also reads it via jdx/mise-action.
+
+[tools]
+# Java 21 LTS — ApacheDS 2.0.0-M24 (2018) targets bytecode 1.8 (pom.xml
+# `maven.compiler.source`), but the JDK that compiles + runs tests can be
+# any modern release. Verified test-pass against JDK 18, 21, and 25.
+# renovate: datasource=java-version depName=java
+java = "temurin-21.0.10+7.0.LTS"
+
+# renovate: datasource=maven depName=org.apache.maven:apache-maven
+maven = "3.9.11"
