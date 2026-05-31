@@ -2,11 +2,11 @@
 # CI also reads it via jdx/mise-action.
 
 [tools]
-# Java 21 LTS — ApacheDS 2.0.0-M24 (2018) targets bytecode 1.8 (pom.xml
-# `maven.compiler.source`), but the JDK that compiles + runs tests can be
-# any modern release. Verified test-pass against JDK 18, 21, and 25.
-# renovate: datasource=java-version depName=java
+# Java 21 LTS — `maven.compiler.source=21` in pom.xml matches.
+# Verified test-pass on JDK 21. Tracked natively by Renovate's mise
+# manager (no `# renovate:` annotation needed — the mise manager doesn't
+# consult inline comments; an annotation here would be dead text per the
+# /renovate skill rule).
 java = "temurin-21.0.11+10.0.LTS"
 
-# renovate: datasource=maven depName=org.apache.maven:apache-maven
 maven = "3.9.16"
