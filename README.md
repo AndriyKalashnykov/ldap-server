@@ -5,7 +5,7 @@
 
 # ldap-server — In-Memory LDAP Server (Apache Directory)
 
-Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://directory.apache.org/apacheds/) 2.0.0-M24 — useful for integration testing, SSO simulators, and local development without standing up a real directory. The **runtime surface** exposes the LDAP protocol (default partition `dc=ldap,dc=example`) with optional LDAPS, configurable bind address / port, a swappable admin password (`uid=admin,ou=system`), and one-or-more `.ldif` files imported at boot via JCommander-driven CLI flags; the **delivery surface** ships as a self-contained Maven-shaded JAR, a multi-stage non-root Docker image on Docker Hub ([`andriykalashnykov/apacheds-ad`](https://hub.docker.com/r/andriykalashnykov/apacheds-ad)), an [`mise`](https://mise.jdx.dev/)-pinned Java 21 + Maven 3.9.11 toolchain, a GitHub Actions pipeline gated by `dorny/paths-filter` and `aquasecurity/trivy-action` (CRITICAL/HIGH blocking image scan + TCP-probe smoke test before push), and Renovate-managed dependencies.
+Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://directory.apache.org/apacheds/) 2.0.0-M24 — useful for integration testing, SSO simulators, and local development without standing up a real directory. The **runtime surface** exposes the LDAP protocol (default partition `dc=ldap,dc=example`) with optional LDAPS, configurable bind address / port, a swappable admin password (`uid=admin,ou=system`), and one-or-more `.ldif` files imported at boot via JCommander-driven CLI flags; the **delivery surface** ships as a self-contained Maven-shaded JAR, a multi-stage non-root Docker image on Docker Hub ([`andriykalashnykov/apacheds-ad`](https://hub.docker.com/r/andriykalashnykov/apacheds-ad)), toolchain-alignment guards keeping `.mise.toml` and `Dockerfile` in lockstep on Java 21 + Maven 3.9.11, a GitHub Actions pipeline gated by `dorny/paths-filter`, Trivy filesystem + image scans (CRITICAL/HIGH blocking on the image side), a TCP-probe smoke test, an LDAP-bind + search end-to-end gate before push, OWASP dependency-check (weekly cron + tag pushes + manual dispatch), and Renovate-managed dependencies.
 
 > This is a fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server) — every Java change lives upstream; the fork adds the Docker pipeline, Makefile, hardened CI, and Renovate. Java package `com.github.kwart.ldap` is intentionally kept aligned with upstream so future syncs stay clean diffs.
 
@@ -57,13 +57,13 @@ ldapsearch -x -H ldap://127.0.0.1:10389 -D 'uid=admin,ou=system' -w secret \
 | [mise](https://mise.jdx.dev/) | latest | Pins Java + Maven from [`.mise.toml`](.mise.toml); `make deps` installs it on first run |
 | [JDK (Temurin)](https://adoptium.net/) | 21 LTS | Auto-installed by `mise install` |
 | [Maven](https://maven.apache.org/) | 3.9.11 | Auto-installed by `mise install` |
-| [Docker](https://www.docker.com/) | 20.10+ | Optional — required only for `make docker-build` / `make docker-smoke-test` |
+| [Docker](https://www.docker.com/) | 20.10+ | Optional — required only for `make image-build` / `make image-smoke-test` |
 
 `make deps` bootstraps mise (no root required, installs to `~/.local/bin`), then runs `mise install` which reads `.mise.toml` and provisions the pinned Java + Maven. Run `make deps-check` afterward to verify the toolchain is on PATH.
 
 ## CLI Reference
 
-```
+```text
 $ java -jar target/ldap-server.jar --help
 
 The ldap-server is a simple LDAP server implementation based on ApacheDS. It
@@ -93,7 +93,7 @@ Usage: java -jar ldap-server.jar [options] [LDIFs to import]
 
 ### Default seed data ([`src/main/resources/ldap-example.ldif`](src/main/resources/ldap-example.ldif))
 
-```
+```text
 dc=ldap,dc=example                                  (root domain)
 ├── ou=Users,dc=ldap,dc=example
 │   └── uid=jduke,ou=Users,dc=ldap,dc=example       (Java Duke / theduke)
@@ -138,9 +138,9 @@ docker run -it --rm \
 Or build locally:
 
 ```bash
-make docker-build         # multi-stage build from src/, tags as $(IMAGE_REF)
-make docker-smoke-test    # boot the image, wait for HEALTHCHECK = healthy
-make docker-run           # interactive run with $(LDIF_DIR) bind-mounted
+make image-build         # multi-stage build from src/, tags as $(IMAGE_REF)
+make image-smoke-test    # boot the image, wait for HEALTHCHECK = healthy
+make image-run           # interactive run with $(LDIF_DIR) bind-mounted
 ```
 
 The runtime image is `eclipse-temurin:21-jre`-based, runs as a non-root user (UID 10001), and ships a TCP HEALTHCHECK that probes `localhost:${APP_INTERNAL_PORT}` via bash `/dev/tcp` — no `curl` / `nc` / `wget` in the image.
@@ -155,29 +155,33 @@ Run `make help` to see every target with its description.
 |--------|-------------|
 | `make deps` | Install Java + Maven via mise (reads `.mise.toml`) |
 | `make deps-check` | Show installed toolchain (java / mvn / docker / mise versions) |
+| `make check-java-alignment` | Verify Java major matches across `.mise.toml` + `Dockerfile` |
+| `make check-maven-alignment` | Verify Maven minor matches across `.mise.toml` + `Dockerfile` build stage |
 | `make build` | Compile source (no tests) |
 | `make test` | Run JUnit tests |
 | `make package` | Build the shaded runnable JAR at `target/ldap-server.jar` |
 | `make run-jar` | Run the packaged JAR with the bundled LDIF |
-| `make lint` | Validate `pom.xml` |
+| `make lint` | Validate `pom.xml` + shell-script executable-bit guard |
+| `make cve-check` | OWASP dependency-check (transitive deps; ~2 GB NVD download on first run) |
 | `make clean` | Remove Maven build artifacts |
 
-### Docker
+### Container
 
 | Target | Description |
 |--------|-------------|
-| `make docker-build` | Multi-stage build from `src/`, tagged as `$(IMAGE_REF)` |
-| `make docker-run` | Run the image with `$(LDIF_DIR)` bind-mounted into `/ldap/ldif/` |
-| `make docker-smoke-test` | Boot the image and wait for its HEALTHCHECK to report healthy |
+| `make image-build` | Multi-stage build from `src/`, tagged as `$(IMAGE_REF)` |
+| `make image-run` | Run the image with `$(LDIF_DIR)` bind-mounted into `/ldap/ldif/` |
+| `make image-smoke-test` | Boot the image and wait for its HEALTHCHECK to report healthy |
+| `make e2e` | End-to-end: boot image + verify LDAP bind + search via the protocol |
 | `make docker-login` | Log into `$(DOCKER_REGISTRY)` using `DOCKER_LOGIN` + `$$DOCKER_PWD` (stdin-only) |
-| `make docker-push` | Push `$(IMAGE_REF)` to `$(DOCKER_REGISTRY)` |
+| `make image-push` | Push `$(IMAGE_REF)` to `$(DOCKER_REGISTRY)` |
 
 ### CI
 
 | Target | Description |
 |--------|-------------|
-| `make ci` | Full local CI pipeline: `deps → lint → test → package` |
-| `make ci-run` | Run the GitHub Actions workflow locally via [act](https://github.com/nektos/act) |
+| `make ci` | Full local CI pipeline: `deps → toolchain-alignment → lint → test → package` |
+| `make ci-run` | Run the GitHub Actions workflow locally via [act](https://github.com/nektos/act) — exercises `changes` + `build` + `ci-pass` only; the tag-only `docker` + `cve-check` + `release` paths need a real GitHub event context |
 
 ## Configuration
 
@@ -185,13 +189,13 @@ Every operator-tunable value is sourced from env vars with `?=` fallbacks in the
 
 | Variable | Default | Used by |
 |----------|---------|---------|
-| `DOCKER_REGISTRY` | `registry-1.docker.io` | `docker-login`, `docker-push` |
+| `DOCKER_REGISTRY` | `registry-1.docker.io` | `docker-login`, `image-push` |
 | `DOCKER_LOGIN` | _(unset)_ | tags `${DOCKER_LOGIN}/${IMAGE_NAME}:${IMAGE_TAG}` |
 | `DOCKER_PWD` | _(unset; gitignored `.env` only)_ | piped to `docker login --password-stdin` — NEVER on argv |
 | `IMAGE_NAME` | `apacheds-ad` | image-name segment |
 | `IMAGE_TAG` | `latest` | image-tag segment |
 | `JAR_PATH` | `target/ldap-server.jar` | `run-jar` |
-| `LDIF_DIR` | `target/classes/` | bind-mounted into `/ldap/ldif/` for `docker-run` |
+| `LDIF_DIR` | `target/classes/` | bind-mounted into `/ldap/ldif/` for `image-run` |
 | `LDAP_PORT` | `10389` | host-side port mapping |
 | `LDAPS_PORT` | _(unset)_ | when set, `run-jar` enables `-sp $LDAPS_PORT` |
 | `BIND_ADDRESS` | `0.0.0.0` | `run-jar`'s `-b` flag |
@@ -199,14 +203,15 @@ Every operator-tunable value is sourced from env vars with `?=` fallbacks in the
 
 ## CI/CD
 
-GitHub Actions runs on every push to `master`, every `v*` git tag, and every pull request. The workflow ([`build-test-push.yml`](.github/workflows/build-test-push.yml)) is structured as separate jobs with `needs:` dependencies for fail-fast + parallelism; a single `ci-pass` aggregator is the only check the branch-protection ruleset needs to gate.
+GitHub Actions runs on every push to `master`, every `v*` git tag, every pull request, plus a weekly `cron: '0 6 * * 1'` for `cve-check` and `workflow_dispatch` for manual reruns. The workflow ([`build-test-push.yml`](.github/workflows/build-test-push.yml)) is structured as separate jobs with `needs:` dependencies for fail-fast + parallelism; a single `ci-pass` aggregator is the only check the branch-protection ruleset needs to gate.
 
 | Job | Triggers | Purpose |
 |-----|----------|---------|
 | `changes` | every event | [`dorny/paths-filter`](https://github.com/dorny/paths-filter) — doc-only PRs skip every job below |
-| `build` | code-changing events + every tag | Provisions Java 21 + Maven 3.9.11 via `jdx/mise-action`, restores `~/.m2` from `actions/cache`, runs `make ci` (lint + test + package), uploads `target/ldap-server.jar` as an artifact |
-| `release` | push to master OR `v*` tag | Downloads the JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release` (replaces the deprecated `actions/create-release` + `actions/upload-release-asset` combo) |
-| `docker` | `v*` tag only | Build image for scan → Trivy CRITICAL/HIGH gate → `make docker-smoke-test` → log in to Docker Hub → push single-arch `linux/amd64` image. Every gate blocks the push |
+| `build` | code-changing events + every tag | Provisions Java 21 + Maven 3.9.11 via `jdx/mise-action`, restores `~/.m2` from `actions/cache`, runs `make ci` (alignment guards + lint + test + package), Trivy filesystem scan (informational), uploads `target/ldap-server.jar` as an artifact |
+| `cve-check` | tag pushes + weekly cron + dispatch | OWASP dependency-check via `mvn org.owasp:dependency-check-maven:check`; NVD DB cached at `~/.m2/repository/org/owasp/dependency-check-data` for fast warm starts. NVD API key optional |
+| `release` | push to master OR `v*` tag | Downloads the JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release` |
+| `docker` | `v*` tag only | Build image for scan → Trivy CRITICAL/HIGH image scan → `make image-smoke-test` → `make e2e` (LDAP bind + search) → log in to Docker Hub → push single-arch `linux/amd64` image with `flavor: latest=true`. Every gate blocks the push |
 | `ci-pass` | always | `if: always() && contains(needs.*.result, 'failure')` — single aggregator for branch protection |
 
 Every action is SHA-pinned (verified via `gh api …/git/refs/tags`). A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old workflow runs and caches from deleted branches weekly via the native `gh` CLI.
@@ -219,6 +224,7 @@ Configure under **Settings → Secrets and variables → Actions**.
 |------|------|---------|---------------|
 | `DOCKERHUB_USERNAME` | Secret | `docker` job — image push | Your Docker Hub account name |
 | `DOCKERHUB_TOKEN` | Secret | `docker` job — image push | Docker Hub → Account Settings → Personal access tokens |
+| `NVD_API_KEY` | Secret (optional) | `cve-check` job — raises NVD lookup rate limit | Free API key from [NIST NVD](https://nvd.nist.gov/developers/request-an-api-key); routed via `~/.m2/settings.xml`, never via argv |
 | `GITHUB_TOKEN` | _(auto-provisioned)_ | `release` + `cleanup-runs` jobs | GitHub injects automatically |
 
 ## License

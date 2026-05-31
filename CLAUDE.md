@@ -16,10 +16,14 @@ JDK 21 LTS + Maven 3.9.11, both pinned in [`.mise.toml`](.mise.toml). `make deps
 
 ```bash
 make deps                                            # one-time mise + Java/Maven bootstrap
-make ci                                              # lint + test + package (single command for the local pipeline)
+make ci                                              # deps + alignment guards + lint + test + package
+make e2e                                             # boot image, override CMD, LDAP bind + search
+make cve-check                                       # OWASP dependency-check (~2 GB NVD cold start)
 java -jar ./target/ldap-server.jar ./target/classes/ # run with bundled LDIFs as seed data
 java -jar ./target/ldap-server.jar --help            # full CLI flag list (includes --admin-password, --ssl-*)
 ```
+
+`make ci` chains `deps → check-java-alignment → check-maven-alignment → lint → test → package`. The two alignment guards fail fast when the Java major in `.mise.toml` drifts from the Dockerfile `FROM` lines, or when the Maven minor drifts from the build-stage tag — silent toolchain desync is otherwise a recurring foot-gun on Renovate split-PR days. Both guards are mutation-tested (proven to go RED on intentional desync).
 
 `pom.xml` keeps `maven.compiler.source=1.8` AND has a `release` profile that enforces `[1.8,1.9)` via the enforcer plugin. **Don't "fix" this** — ApacheDS 2.0.0-M24 ships bytecode targeting 1.8 and the project intentionally preserves that compatibility floor while the build itself runs on JDK 21+. The JDK used to compile can be anything ≥ 1.8.
 
@@ -63,37 +67,41 @@ Multi-stage Dockerfile, builds from source — does NOT download a released JAR.
 - **`HEALTHCHECK` flag timings are LITERAL** (`--interval=30s --timeout=3s --start-period=20s --retries=3`) because Docker's parser does NOT expand ARG/ENV in those slots. The CMD's `${VAR}` inside the nested `bash -c '...'` ARE expanded at container start, so `HEALTHCHECK_HOST` and `APP_INTERNAL_PORT` honor `docker run -e ...` overrides.
 - **CMD**: shell form so `${APP_INTERNAL_PORT}` is honored — `java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT} /ldap/ldif/`.
 
-### Docker workflows
+### Container workflows
 
 ```bash
-make docker-build        # multi-stage build from src/ (uses DOCKER_LOGIN/IMAGE_NAME/IMAGE_TAG env)
-make docker-smoke-test   # boot the container, poll docker inspect until Health.Status == "healthy" (90s timeout)
-make docker-run          # interactive run with $(LDIF_DIR) bind-mounted into /ldap/ldif/
+make image-build         # multi-stage build from src/ (uses DOCKER_LOGIN/IMAGE_NAME/IMAGE_TAG env)
+make image-smoke-test    # boot the container, poll docker inspect until Health.Status == "healthy" (90s timeout)
+make image-run           # interactive run with $(LDIF_DIR) bind-mounted into /ldap/ldif/
+make e2e                 # boot image + run AuthenticateWithSearch (LDAP bind + uid search + re-bind)
 ```
 
-The runtime image's CMD references `/ldap/ldif/` — mount any directory containing `.ldif` files there to seed entries. Empty mount = server starts with no entries (matches legacy behavior; does NOT fall back to bundled defaults when an empty-but-present `--ldifs` arg is supplied).
+The runtime image's CMD references `/ldap/ldif/` — mount any directory containing `.ldif` files there to seed entries. Empty mount = server starts with no entries (matches legacy behavior; does NOT fall back to bundled defaults when an empty-but-present `--ldifs` arg is supplied). **The `e2e` target overrides the entrypoint** (`--entrypoint java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT}` with no LDIF arg) so the server loads the bundled `ldap-example.ldif` defaults — that's the only way `AuthenticateWithSearch jduke theduke` can find an entry to bind against without a host-side mount.
 
 ## CI (`.github/workflows/build-test-push.yml`)
 
-Five jobs, every action SHA-pinned:
+Six jobs, every action SHA-pinned:
 
 | Job | Triggers | Notes |
 |---|---|---|
 | `changes` | every event | `dorny/paths-filter` — doc-only PRs (anything matching `**.md`, `docs/**`, `LICENSE`, etc., except `CLAUDE.md` which is re-included) skip every job below. `base: ${{ github.event_name == 'push' && 'master' \|\| '' }}` to handle act + PR-event annotation cases. |
-| `build` | code-changing events + every tag | `jdx/mise-action` provisions Java + Maven from `.mise.toml`; `actions/cache` keyed on `hashFiles('pom.xml')` for `~/.m2/repository`. Runs `make ci`. Uploads `target/ldap-server.jar` as artifact. |
-| `release` | push to `master` OR `v*` tag | Downloads JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release` (replaces the deprecated `actions/create-release` + `actions/upload-release-asset` combo). `contents: write` scoped to this job only. |
-| `docker` | `v*` tag only | Build image for scan (load: true, amd64) → Trivy CRITICAL/HIGH scan → `make docker-smoke-test IMAGE_REF=apacheds-ad:scan` → log in to Docker Hub → push single-arch `linux/amd64` image with `provenance: false` + `sbom: false`. Each gate blocks the push. |
-| `ci-pass` | always | Single branch-protection aggregator. Treats skipped as pass (handles tag-only `docker`, master-or-tag-only `release`, doc-only-PR-skipping everything). |
+| `build` | code-changing events + every tag | `jdx/mise-action` provisions Java + Maven from `.mise.toml`; `actions/cache` keyed on `hashFiles('pom.xml')` for `~/.m2/repository`. Runs `make ci` (alignment guards + lint + test + package). Trivy filesystem scan (informational). Uploads `target/ldap-server.jar` as artifact. |
+| `cve-check` | tag pushes + weekly cron + dispatch | OWASP dependency-check via `mvn org.owasp:dependency-check-maven:check`. NVD DB cached at `~/.m2/repository/org/owasp/dependency-check-data` keyed on `pom.xml`. `NVD_API_KEY` optional (routed via `~/.m2/settings.xml`, never argv). |
+| `release` | push to `master` OR `v*` tag | Downloads JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release`. `contents: write` scoped to this job only. |
+| `docker` | `v*` tag only | Build image for scan (load: true, amd64) → Trivy CRITICAL/HIGH image scan → `make image-smoke-test IMAGE_REF=apacheds-ad:scan` → `make e2e IMAGE_REF=apacheds-ad:scan` → log in to Docker Hub → push single-arch `linux/amd64` image with `provenance: false` + `sbom: false` and `flavor: latest=true` (only retags `:latest` for the highest-precedence semver). Each gate blocks the push. |
+| `ci-pass` | always | Single branch-protection aggregator. Treats skipped as pass (handles tag-only `docker`/`cve-check`, master-or-tag-only `release`, doc-only-PR-skipping everything). |
 
 A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old workflow runs and caches from deleted branches weekly via the native `gh` CLI (the previous `Mattraks/delete-workflow-runs` was migrated off per portfolio policy — single-maintainer third-party action, replaced by built-in tooling).
 
+**`make ci-run` coverage gap.** `act push` exercises `changes` + `build` + `ci-pass` end-to-end. The tag-only `docker` + `cve-check` + `release` jobs need a real GitHub event context (tag ref, Releases API, Docker Hub creds) and won't run cleanly under `act` — validate those via a real push or `gh workflow run`.
+
 ### Required secrets
 
-`DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` (configured under Settings → Secrets and variables → Actions; used only by the `docker` job). `GITHUB_TOKEN` is auto-provisioned.
+`DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` (Settings → Secrets and variables → Actions; used only by the `docker` job). `NVD_API_KEY` is OPTIONAL — without it the `cve-check` job still works but NVD lookups are rate-limited. `GITHUB_TOKEN` is auto-provisioned.
 
 ## Legacy `scripts/`
 
-The `scripts/` directory (`build.sh`, `run.sh`, `push.sh`, `local-run.sh`, `set-env.sh`) predates the Makefile + `.env.example` and is **functionally superseded** by Make targets. Behavior is equivalent (`scripts/build.sh` → `make docker-build`; `scripts/push.sh` → `make docker-login` + `make docker-push` with safer stdin-based password handling). Kept on disk until a deliberate cleanup; safe to delete in a focused PR.
+The `scripts/` directory (`build.sh`, `run.sh`, `push.sh`, `local-run.sh`, `set-env.sh`) predates the Makefile + `.env.example` and is **functionally superseded** by Make targets. Behavior is equivalent (`scripts/build.sh` → `make image-build`; `scripts/push.sh` → `make docker-login` + `make image-push` with safer stdin-based password handling). Kept on disk until a deliberate cleanup; safe to delete in a focused PR.
 
 ## Skills
 

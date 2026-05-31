@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <!--
+        Empty suppressions stub. Add entries here ONLY when:
+          - The finding is a confirmed false positive, AND
+          - The notes block names the re-evaluation trigger (next upstream
+            version, dependency bump that drops the vulnerable transitive,
+            etc.) so the suppression doesn't rot indefinitely.
+
+        Pinning suppressions to a specific resolved version is fine; just make
+        sure to delete the entry the moment the package moves past that
+        version (or update the regex to cover the new vulnerable range).
+
+        See https://jeremylong.github.io/DependencyCheck/general/suppression.html
+    -->
+</suppressions>

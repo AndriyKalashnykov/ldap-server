@@ -21,6 +21,24 @@
 
     <build>
         <finalName>ldap-server</finalName>
+        <pluginManagement>
+            <plugins>
+                <!-- Version pin for `make cve-check` so the Makefile can invoke
+                     `mvn org.owasp:dependency-check-maven:check` without a
+                     `-Dversion=` flag. Renovate-tracked. -->
+                <plugin>
+                    <groupId>org.owasp</groupId>
+                    <artifactId>dependency-check-maven</artifactId>
+                    <version>12.2.2</version>
+                    <configuration>
+                        <failBuildOnCVSS>7</failBuildOnCVSS>
+                        <suppressionFiles>
+                            <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
+                        </suppressionFiles>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
