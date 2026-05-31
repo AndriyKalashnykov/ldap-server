@@ -1,0 +1,67 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":semanticCommitType(chore)"
+  ],
+  "enabledManagers": [
+    "maven",
+    "github-actions",
+    "dockerfile",
+    "mise"
+  ],
+  "commitMessagePrefix": "chore(all): ",
+  "commitMessageAction": "update",
+  "commitBody": "Signed-off-by: Renovate Bot <bot@renovateapp.com>",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 50,
+  "prHourlyLimit": 0,
+  "platformAutomerge": true,
+  "automerge": true,
+  "automergeType": "pr",
+  "automergeStrategy": "squash",
+  "ignoreTests": false,
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "automerge": true,
+    "minimumReleaseAge": "0 days"
+  },
+  "packageRules": [
+    {
+      "description": "Wait 3 days before automerging major updates so the wider community has a chance to surface regressions",
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Group all GitHub Actions bumps into one PR. helpers:pinGitHubActionDigests (inherited from config:best-practices) carries the `# vX.Y.Z` comment alongside the SHA so reviewers see what changed.",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Group ApacheDS bumps — the server, core-annotations, protocol-ldap, and api-ldap-codec-standalone are released in lockstep upstream and must move together to avoid runtime ClassNotFoundException at boot.",
+      "matchManagers": ["maven"],
+      "matchPackageNames": [
+        "/^org\\.apache\\.directory\\.server:/",
+        "/^org\\.apache\\.directory\\.api:/"
+      ],
+      "groupName": "ApacheDS"
+    },
+    {
+      "description": "Group SLF4J bumps — api + simple binding ship together.",
+      "matchManagers": ["maven"],
+      "matchPackageNames": ["/^org\\.slf4j:/"],
+      "groupName": "SLF4J"
+    },
+    {
+      "description": "Group Maven build plugins (shade, bundle, compiler, source, javadoc, gpg, enforcer, dependency, nexus-staging) into one PR — plugin bumps don't affect application runtime.",
+      "matchManagers": ["maven"],
+      "matchPackageNames": [
+        "/^org\\.apache\\.maven\\.plugins:/",
+        "/^org\\.apache\\.felix:maven-bundle-plugin/",
+        "/^org\\.codehaus\\.mojo:exec-maven-plugin/",
+        "/^org\\.sonatype\\.plugins:/"
+      ],
+      "groupName": "Maven plugins"
+    }
+  ]
+}
