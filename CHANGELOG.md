@@ -9,7 +9,7 @@ The fork inherits the upstream Java code from
 fork-owned changes (Docker pipeline, Makefile, hardened CI, Renovate config,
 and dependency / source migrations driven by the fork) are recorded below.
 
-## [Unreleased]
+## [1.1.1] — 2026-05-31
 
 ### Security
 
@@ -27,6 +27,17 @@ and dependency / source migrations driven by the fork) are recorded below.
   `groupadd` swapped to busybox `adduser` / `addgroup` (`-S`/`-D`/`-H`
   short flags). `Makefile` `e2e` target's `--health-cmd` override
   swapped to match (`nc -z localhost ${APP_INTERNAL_PORT}`).
+
+## [1.1.0] — superseded by 1.1.1
+
+The `v1.1.0` git tag exists but never published a Docker Hub image: the
+`docker` job's Trivy CRITICAL/HIGH gate (working as designed) blocked
+the push when it surfaced mina-core CVE-2024-52046 (CRITICAL) and 8
+HIGH Go-stdlib CVEs in the Ubuntu-based `eclipse-temurin:21-jre` base.
+Both are fixed in 1.1.1. The `Latest` GitHub Release was updated with
+the 1.1.0 JAR (the `release` job succeeded independently); the 1.1.1
+release supersedes it. The migration content shipped in 1.1.0 is
+unchanged in 1.1.1 — see the items below.
 
 ### Added
 
