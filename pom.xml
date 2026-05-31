@@ -51,6 +51,16 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <!-- Exclude test-only deps that ApacheDS 2.0.0-M24's
+                                 apacheds-all leaks into compile scope (broken
+                                 <scope> declaration in the M24 POM). Production
+                                 code never references junit/hamcrest. -->
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>junit:junit</exclude>
+                                    <exclude>org.hamcrest:hamcrest-core</exclude>
+                                </excludes>
+                            </artifactSet>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
