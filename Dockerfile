@@ -4,8 +4,9 @@
 # Build stage — compile shaded JAR from source
 # =============================================================================
 # The official Maven + Temurin 21 image — mvn + JDK in one layer.
-# Renovate-tracked via the `dockerfile` manager.
-FROM maven:3.9-eclipse-temurin-21 AS build
+# Renovate-tracked via the `dockerfile` manager; digest pin keeps the
+# build reproducible across registry-tag retags.
+FROM maven:3.9-eclipse-temurin-21@sha256:1bb51c5ed28b95aef2bc7b46bff6940da43747cdaf838ce4afc2081ce9403750 AS build
 
 WORKDIR /workspace
 
@@ -25,7 +26,7 @@ RUN test -s /workspace/target/ldap-server.jar
 # =============================================================================
 # Runtime stage — slim JRE, non-root, env-driven tunables
 # =============================================================================
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre@sha256:010e0a06bd4e0184dec58626afb3ba727b42c56c91b977e2f0a9e0837e0fa3fb
 
 # === Operator tunables (slot 2 — ARG defaults; see configuration.md) ===
 ARG APP_INTERNAL_PORT=10389
