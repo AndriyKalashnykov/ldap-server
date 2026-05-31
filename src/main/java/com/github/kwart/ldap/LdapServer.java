@@ -39,6 +39,7 @@ import org.apache.directory.api.ldap.model.name.Dn;
 import org.apache.directory.api.util.IOUtils;
 import org.apache.directory.server.core.api.DirectoryService;
 import org.apache.directory.server.core.partition.impl.avl.AvlPartition;
+import org.apache.directory.server.core.security.CertificateUtil;
 import org.apache.directory.server.ldap.handlers.extended.StartTlsHandler;
 import org.apache.directory.server.protocol.shared.transport.TcpTransport;
 
@@ -110,9 +111,22 @@ public class LdapServer {
         }
 
         ldapServer = new org.apache.directory.server.ldap.LdapServer();
+        // AM27 removed the M24 CoreKeyStoreSpi fallback (which auto-loaded a
+        // keystore from the DIT when no `--ssl-keystore-file` was supplied),
+        // so `CertificateUtil.loadKeyStore(null, null)` now returns null and
+        // `LdapServer.start()` later NPEs from StartTlsHandler.setLdapServer.
+        // Preserve M24's "just works without configuration" behavior by
+        // generating a self-signed EC keystore on the fly when none is given.
+        String keystoreFile = cliArguments.getSslKeystoreFile();
+        String keystorePassword = cliArguments.getSslKeystorePassword();
+        if (keystoreFile == null) {
+            char[] generatedPassword = "secret".toCharArray();
+            keystoreFile = CertificateUtil.createTempKeyStore("ldap-server-", generatedPassword).getAbsolutePath();
+            keystorePassword = new String(generatedPassword);
+        }
+        ldapServer.setKeystoreFile(keystoreFile);
+        ldapServer.setCertificatePassword(keystorePassword);
         ldapServer.addExtendedOperationHandler(new StartTlsHandler());
-        ldapServer.setKeystoreFile(cliArguments.getSslKeystoreFile());
-        ldapServer.setCertificatePassword(cliArguments.getSslKeystorePassword());
         TcpTransport tcp = new TcpTransport(cliArguments.getBindAddress(), cliArguments.getPort());
         ldapServer.addTransports(tcp);
         if (cliArguments.getSslPort() != null) {
