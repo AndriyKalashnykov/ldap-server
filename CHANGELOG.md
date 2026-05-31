@@ -11,6 +11,23 @@ and dependency / source migrations driven by the fork) are recorded below.
 
 ## [Unreleased]
 
+### Security
+
+- **mina-core pinned to 2.2.7** via `dependencyManagement` to override
+  ApacheDS AM27's transitive mina-core 2.2.3, which carried CVE-2024-52046
+  (CRITICAL — unbounded deserialization may allow RCE). Removable once
+  upstream ApacheDS ships a release with mina ≥ 2.2.4.
+- **Runtime base image switched from `eclipse-temurin:21-jre`
+  (Ubuntu) to `eclipse-temurin:21-jre-alpine`.** The Ubuntu variant
+  bundled Go binaries whose `stdlib v1.26.2` triggered 8 HIGH Trivy
+  findings (CVE-2026-33811 et al.) with no Eclipse-Temurin-published
+  fix yet. The alpine variant ships no Go binaries (Trivy-clean at
+  switch time, OS layer alpine 3.23.4) and uses busybox `nc` for the
+  HEALTHCHECK in place of bash `/dev/tcp`. Dockerfile's `useradd` /
+  `groupadd` swapped to busybox `adduser` / `addgroup` (`-S`/`-D`/`-H`
+  short flags). `Makefile` `e2e` target's `--health-cmd` override
+  swapped to match (`nc -z localhost ${APP_INTERNAL_PORT}`).
+
 ### Added
 
 - **ApacheDS 2.0.0.AM27 migration** (real Major migration, formerly deferred).
