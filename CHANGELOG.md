@@ -9,6 +9,42 @@ The fork inherits the upstream Java code from
 fork-owned changes (Docker pipeline, Makefile, hardened CI, Renovate config,
 and dependency / source migrations driven by the fork) are recorded below.
 
+## [1.2.1] — 2026-05-31
+
+Security patch over v1.2.0. v1.2.0's `cve-check` passed only because the
+scan was incomplete (cold NVD DB) and the Sonatype OSS Index analyzer was
+disabled; once both were fixed the now-complete scan surfaced real
+BouncyCastle CVEs that v1.2.0 had shipped. No API or runtime-behaviour
+change for consumers.
+
+### Security
+
+- **BouncyCastle `bc{prov,pkix,util}-jdk15on:1.70` → `bc*-jdk18on:1.84`.**
+  ApacheDS AM27 pulls the `jdk15on:1.70` artifacts transitively; they carry
+  **CVE-2024-29857 (7.5)** and **CVE-2024-34447 (7.7)** (both ≥ the
+  `failBuildOnCVSS=7` gate). The `jdk15on` line ended at 1.70, so the fix is
+  in the renamed `jdk18on` line: all `org.bouncycastle:*` transitives are
+  excluded from `apacheds-core-annotations` + `apacheds-protocol-ldap` and
+  `bc*-jdk18on:1.84` added directly (`version.org.bouncycastle`,
+  Renovate-tracked). Verified: dependency tree carries only jdk18on:1.84; all
+  8 tests pass on JDK 25 incl. `StartTlsTest` (BC-backed TLS); image
+  smoke + LDAP e2e green. Removable once ApacheDS ships on bc-jdk18on ≥ 1.78.
+- **CVE-2010-1151 suppressed** on `org.apache.directory.server:*` — a
+  confirmed false positive (ApacheDS CPE-mismatched to `apache_http_server`,
+  an Apache HTTP Server mod_auth race condition), pinned to AM27 with a
+  re-evaluation trigger.
+
+### Changed
+
+- **`cve-check` now runs the Sonatype OSS Index analyzer** (second vuln
+  source beside NVD). Token auth is mandatory for OSS Index; without
+  credentials it was silently disabled (warning only). `OSS_INDEX_USER` /
+  `OSS_INDEX_TOKEN` are routed through `~/.m2/settings.xml`
+  (`-DossIndexServerId=ossindex`), never argv.
+- **NVD DB cache decoupled from `pom.xml`.** Re-keyed on the ISO week
+  (`date -u +%Y-%V`) instead of `hashFiles('pom.xml')`, so a version bump no
+  longer evicts the DB and forces a cold ~30-min fetch.
+
 ## [1.2.0] — 2026-05-31
 
 Minor bump (not a patch): the runtime Java baseline moves 21 → 25, a
