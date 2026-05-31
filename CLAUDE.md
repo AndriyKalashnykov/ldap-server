@@ -62,7 +62,7 @@ Entry point is `com.github.kwart.ldap.LdapServer#main`, declared as the shaded J
 Multi-stage Dockerfile, builds from source — does NOT download a released JAR.
 
 - **Builder**: `maven:3.9-eclipse-temurin-25` runs `mvn -B -DskipTests clean package` with a BuildKit cache mount on `~/.m2`.
-- **Runtime**: `eclipse-temurin:25-jre-alpine` (alpine variant; ~41 MB `/usr`, no Go binaries to drag in stdlib CVEs, Trivy-clean at time of switch). Non-root user UID/GID 10001 (created via busybox `addgroup`/`adduser`, no home, `/sbin/nologin` shell). Owns `/ldap`.
+- **Runtime**: `eclipse-temurin:25-jre-alpine` (alpine variant; ~26 MB `/usr`, no Go binaries to drag in stdlib CVEs, Trivy-clean at time of switch). Non-root user UID/GID 10001 (created via busybox `addgroup`/`adduser`, no home, `/sbin/nologin` shell). Owns `/ldap`.
 - **HEALTHCHECK**: `nc -z ${HEALTHCHECK_HOST} ${APP_INTERNAL_PORT}` — busybox netcat is bundled with alpine; no extra package install needed. Probes the LDAP TCP listener since ApacheDS exposes only the LDAP protocol (no HTTP `/healthz`). The previous `bash -c 'exec 3<>/dev/tcp/...'` form was Ubuntu-base specific; alpine's busybox sh has no `/dev/tcp`. **No `apk add` in the runtime layer.**
 - **`HEALTHCHECK` flag timings are LITERAL** (`--interval=30s --timeout=3s --start-period=20s --retries=3`) because Docker's parser does NOT expand ARG/ENV in those slots. The CMD's `${VAR}` expand at container start, so `HEALTHCHECK_HOST` and `APP_INTERNAL_PORT` honor `docker run -e ...` overrides.
 - **CMD**: shell form so `${APP_INTERNAL_PORT}` is honored — `java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT} /ldap/ldif/`.

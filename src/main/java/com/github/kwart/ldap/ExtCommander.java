@@ -56,8 +56,13 @@ public class ExtCommander extends JCommander {
     }
 
     public ExtCommander(Object object, String... args) {
-        super(object, args);
+        // JCommander(Object, String...) is deprecated (it parses in the ctor);
+        // the non-deprecated path is construct-then-parse. super(object) only
+        // registers the object, so set the formatter before parse() and parse
+        // args explicitly — behaviourally identical to the deprecated ctor.
+        super(object);
         setUsageFormatter(new ExtUsageFormatter());
+        parse(args);
     }
 
     public ExtCommander(Object object) {

@@ -9,6 +9,50 @@ The fork inherits the upstream Java code from
 fork-owned changes (Docker pipeline, Makefile, hardened CI, Renovate config,
 and dependency / source migrations driven by the fork) are recorded below.
 
+## [1.2.0] — 2026-05-31
+
+Minor bump (not a patch): the runtime Java baseline moves 21 → 25, a
+consumer-visible requirement change — a `maven.compiler.target=25` JAR
+will not run on a JVM older than 25.
+
+### Changed
+
+- **Java 21 LTS → 25 LTS (coordinated across every alignment touchpoint).**
+  The `check-java-alignment` guard requires `.mise.toml`, the Dockerfile
+  build base, and the Dockerfile runtime base to share one Java major,
+  so all three moved in lockstep:
+  - `.mise.toml` — `temurin-21.0.11+10.0.LTS` → `temurin-25.0.3+9.0.LTS`.
+  - `Dockerfile` build base — `maven:3.9-eclipse-temurin-21` → `-25`.
+  - `Dockerfile` runtime base — `eclipse-temurin:21.0.11_10-jre-alpine`
+    → `25.0.3_9-jre-alpine` (alpine 3.23.4; `/usr` ~26 MB; Trivy
+    CRITICAL/HIGH clean on the base and the shaded JAR, verified
+    2026-05-31).
+  - `pom.xml` — `maven.compiler.source` 21 → 25.
+  Verified on Temurin 25.0.3+9: alignment guard green, all 8 JUnit tests
+  pass (incl. `StartTlsTest`), and the built image is healthy + passes the
+  LDAP bind/search e2e.
+- **`actions/upload-artifact` tracks latest instead of being pinned at
+  v4.x.** v5+ uses a blob-upload protocol `nektos/act`'s built-in artifact
+  server cannot decode (v6 → `Error unauthorized`; v7 → `CreateArtifact:
+  unknown field "mime_type"`), which broke `make ci-run`. Instead of
+  pinning the action (and stranding the repo on the Node-20-deprecated v4
+  runtime), the artifact steps now gate on `if: ${{ !env.ACT }}` — `act`
+  skips them, real GitHub Actions runs them.
+
+### Fixed
+
+- **`release` job no longer fails on doc-only pushes.** It was gated on
+  `!failure() && !cancelled()`, which treats a *skipped* `build` (doc-only
+  push, where the `changes` filter skips it) as OK — so `release` ran with
+  no artifact and failed at `download-artifact` (`Artifact not found for
+  name: ldap-server-jar`), turning `ci-pass` red on `master`. Now gated on
+  `needs.build.result == 'success'`, so it skips cleanly when `build` skips.
+- **`ExtCommander` no longer calls a deprecated JCommander constructor.**
+  `JCommander(Object, String...)` is deprecated (it parses in the ctor);
+  `ExtCommander(Object, String...)` now uses the non-deprecated
+  `super(object)` + explicit `parse(args)` — behaviourally identical, no
+  deprecation warning under JDK 25.
+
 ## [1.1.2] — 2026-05-31
 
 ### Changed

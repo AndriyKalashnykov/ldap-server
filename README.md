@@ -143,7 +143,7 @@ make image-smoke-test    # boot the image, wait for HEALTHCHECK = healthy
 make image-run           # interactive run with $(LDIF_DIR) bind-mounted
 ```
 
-The runtime image is `eclipse-temurin:25-jre-alpine`-based (~41 MB `/usr`, Trivy-clean at switch time, no Go binaries), runs as a non-root user (UID 10001), and ships a TCP HEALTHCHECK that probes `localhost:${APP_INTERNAL_PORT}` via busybox `nc -z` — no `curl` / `bash` / `wget` install needed.
+The runtime image is `eclipse-temurin:25-jre-alpine`-based (~26 MB `/usr`, Trivy-clean at switch time, no Go binaries), runs as a non-root user (UID 10001), and ships a TCP HEALTHCHECK that probes `localhost:${APP_INTERNAL_PORT}` via busybox `nc -z` — no `curl` / `bash` / `wget` install needed.
 
 ## Available Make Targets
 
