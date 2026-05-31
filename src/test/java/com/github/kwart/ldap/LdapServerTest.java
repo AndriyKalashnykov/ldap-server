@@ -17,19 +17,20 @@
  *  under the License.
  */
 
-package org.jboss.test.ldap;
+package com.github.kwart.ldap;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.Socket;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Properties;
+import java.util.stream.Stream;
 
 import javax.naming.Context;
 import javax.naming.NamingEnumeration;
-import javax.naming.NamingException;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.SearchControls;
 import javax.naming.directory.SearchResult;
@@ -40,61 +41,84 @@ import javax.net.ssl.SSLEngine;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509ExtendedTrustManager;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
 /**
- * A simple test of running LDAP server.
- * 
+ * A simple test of running LDAP server. Parameterized over (ipv6, tls).
+ *
  * @author Josef Cacek
  */
-public class LdapTest {
+public class LdapServerTest {
 
-    // Public methods --------------------------------------------------------
+    private LdapServer ldapServer;
 
-    /**
-     * The main.
-     * 
-     * @param args
-     * @throws NamingException
-     * @throws NoSuchAlgorithmException
-     * @throws KeyManagementException
-     */
-    public static void main(String[] args) throws NamingException, NoSuchAlgorithmException, KeyManagementException {
-        String ldapUrl = "ldap://[::1]:10389";
+    static Stream<Arguments> data() {
+        return Stream.of(
+                Arguments.of(false, false),
+                Arguments.of(false, true),
+                Arguments.of(true, false),
+                Arguments.of(true, true));
+    }
 
-        if (Boolean.parseBoolean(System.getProperty("ldaptest.ssl"))) {
+    @AfterEach
+    public void after() throws Exception {
+        if (ldapServer != null) {
+            ldapServer.stop();
+        }
+    }
+
+    @ParameterizedTest(name = "ipv6={0}, tls={1}")
+    @MethodSource("data")
+    public void test(boolean ipv6, boolean tls) throws Exception {
+        CLIArguments cliArguments = new CLIArguments();
+        String[] cliArgs = tls ? new String[] { "-sp", "10636" } : new String[] {};
+        new ExtCommander(cliArguments, cliArgs);
+        ldapServer = new LdapServer(cliArguments);
+
+        String host = ipv6 ? "[::1]" : "127.0.0.1";
+        String port = tls ? "10636" : "10389";
+        String protocol = tls ? "ldaps" : "ldap";
+        String ldapUrl = protocol + "://" + host + ":" + port;
+
+        if (tls) {
             SSLContext sslCtx = SSLContext.getInstance("TLS");
             sslCtx.init(null, new TrustManager[] { new NoVerificationTrustManager() }, new SecureRandom());
             SSLContext.setDefault(sslCtx);
-            ldapUrl = "ldaps://[::1]:10636";
         }
-        final Properties env = new Properties();
+        Properties env = new Properties();
         env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory");
         env.put(Context.PROVIDER_URL, ldapUrl);
         env.put(Context.SECURITY_AUTHENTICATION, "simple");
         env.put(Context.SECURITY_PRINCIPAL, "uid=admin,ou=system");
         env.put(Context.SECURITY_CREDENTIALS, "secret");
-        final LdapContext ctx = new InitialLdapContext(env, null);
+        LdapContext ctx = new InitialLdapContext(env, null);
 
         // ctx.setRequestControls(null);
-        final SearchControls searchControls = new SearchControls();
+        SearchControls searchControls = new SearchControls();
         searchControls.setSearchScope(SearchControls.SUBTREE_SCOPE);
-        NamingEnumeration<?> namingEnum = ctx.search("dc=jboss,dc=org", "(uid=*)", searchControls);
-        while (namingEnum.hasMore()) {
-            SearchResult sr = (SearchResult) namingEnum.next();
-            Attributes attrs = sr.getAttributes();
-            System.out.println(attrs.get("cn"));
-        }
+        NamingEnumeration<?> namingEnum = ctx.search("dc=ldap,dc=example", "(uid=*)", searchControls);
+        assertTrue(namingEnum.hasMore());
+        SearchResult sr = (SearchResult) namingEnum.next();
+        Attributes attrs = sr.getAttributes();
+        assertEquals("Java Duke", attrs.get("cn").get());
         namingEnum.close();
         ctx.close();
     }
 
     public static class NoVerificationTrustManager extends X509ExtendedTrustManager {
 
+        @Override
         public void checkClientTrusted(X509Certificate[] x509Certificates, String s) throws CertificateException {
         }
 
+        @Override
         public void checkServerTrusted(X509Certificate[] x509Certificates, String s) throws CertificateException {
         }
 
+        @Override
         public X509Certificate[] getAcceptedIssuers() {
             return new X509Certificate[0];
         }

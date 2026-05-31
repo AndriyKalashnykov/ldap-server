@@ -18,14 +18,20 @@
  *
  */
 
-package org.jboss.test.ldap;
+package com.github.kwart.ldap;
 
 import java.util.ResourceBundle;
 
+import com.beust.jcommander.DefaultUsageFormatter;
 import com.beust.jcommander.JCommander;
 
 /**
- * Small extension to JCommander.
+ * Small extension to JCommander that wraps the rendered usage output with an
+ * optional head and tail (program description above the option list, examples
+ * below it). JCommander 1.82 moved usage rendering out of {@link JCommander}
+ * itself into pluggable {@link DefaultUsageFormatter} subclasses; this class
+ * registers an inner formatter that calls the standard renderer and prepends /
+ * appends the wrapped strings.
  *
  * @author Josef Cacek
  */
@@ -36,33 +42,45 @@ public class ExtCommander extends JCommander {
 
     public ExtCommander() {
         super();
+        setUsageFormatter(new ExtUsageFormatter());
     }
 
     public ExtCommander(Object object, ResourceBundle bundle, String... args) {
         super(object, bundle, args);
+        setUsageFormatter(new ExtUsageFormatter());
     }
 
     public ExtCommander(Object object, ResourceBundle bundle) {
         super(object, bundle);
+        setUsageFormatter(new ExtUsageFormatter());
     }
 
     public ExtCommander(Object object, String... args) {
         super(object, args);
+        setUsageFormatter(new ExtUsageFormatter());
     }
 
     public ExtCommander(Object object) {
         super(object);
+        setUsageFormatter(new ExtUsageFormatter());
     }
 
-    @Override
-    public void usage(StringBuilder out, String indent) {
-        final int indentCount = indent.length();
-        if (usageHead != null) {
-            out.append(wrap(indentCount, usageHead)).append("\n");
+    /** Inner formatter — wraps {@link DefaultUsageFormatter#usage(StringBuilder, String)}. */
+    private final class ExtUsageFormatter extends DefaultUsageFormatter {
+        ExtUsageFormatter() {
+            super(ExtCommander.this);
         }
-        super.usage(out, indent);
-        if (usageTail != null) {
-            out.append("\n").append(wrap(indentCount, usageTail));
+
+        @Override
+        public void usage(StringBuilder out, String indent) {
+            final int indentCount = indent.length();
+            if (usageHead != null) {
+                out.append(wrap(indentCount, usageHead)).append("\n");
+            }
+            super.usage(out, indent);
+            if (usageTail != null) {
+                out.append("\n").append(wrap(indentCount, usageTail));
+            }
         }
     }
 
@@ -74,7 +92,7 @@ public class ExtCommander extends JCommander {
         return result.toString();
     }
 
-    protected String wrap(final int indent, final String text) {
+    String wrap(final int indent, final String text) {
         final int max = getColumnSize();
         final String[] lines = text.split("\n", -1);
         final String indentStr = getIndent(indent);
@@ -101,30 +119,18 @@ public class ExtCommander extends JCommander {
         return sb.toString();
     }
 
-    /**
-     * @return the usageHead
-     */
     public String getUsageHead() {
         return usageHead;
     }
 
-    /**
-     * @param usageHead the usageHead to set
-     */
     public void setUsageHead(String usageHead) {
         this.usageHead = usageHead;
     }
 
-    /**
-     * @return the usageTail
-     */
     public String getUsageTail() {
         return usageTail;
     }
 
-    /**
-     * @param usageTail the usageTail to set
-     */
     public void setUsageTail(String usageTail) {
         this.usageTail = usageTail;
     }
