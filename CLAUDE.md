@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A single-module Maven project that wraps **Apache Directory Server 2.0.0-M24** as a self-contained, in-memory LDAP server. Maven-shaded into one runnable fat JAR (`target/ldap-server.jar`). No persistence — all directory data lives in memory and is lost on shutdown. CLI parsed via JCommander; default partition root is `dc=ldap,dc=example`; default admin bind is `uid=admin,ou=system` / `secret` on port 10389.
+A single-module Maven project that wraps **Apache Directory Server 2.0.0-M24** as a self-contained, in-memory LDAP server. Maven-shaded into one runnable fat JAR (`target/ldap-server.jar`). No persistence — all directory data lives in memory and is lost on shutdown. CLI parsed via JCommander 1.82; default partition root is `dc=ldap,dc=example`; default admin bind is `uid=admin,ou=system` / `secret` on port 10389. Logging routed through SLF4J 2.0.x + `slf4j-simple` (ServiceLoader binding).
 
 This repo is a **fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server)**. Java code is the upstream's; the fork adds the Docker pipeline (`andriykalashnykov/apacheds-ad` on Docker Hub), Makefile, hardened GitHub Actions workflow, Renovate config, and `.mise.toml` toolchain pinning. The Maven groupId was scrubbed to `io.github.andriykalashnykov` and `<scm>` / `<developers>` point at this fork; everything else in `pom.xml` is upstream's.
 
@@ -12,7 +12,7 @@ This repo is a **fork of [intoolswetrust/ldap-server](https://github.com/intools
 
 ## Build, run, test
 
-JDK 21 LTS + Maven 3.9.11, both pinned in [`.mise.toml`](.mise.toml). `make deps` installs mise on first run, then `mise install` provisions the toolchain.
+JDK 21 LTS + Maven 3.9.16, both pinned in [`.mise.toml`](.mise.toml). `make deps` installs mise on first run, then `mise install` provisions the toolchain.
 
 ```bash
 make deps                                            # one-time mise + Java/Maven bootstrap
@@ -29,16 +29,16 @@ java -jar ./target/ldap-server.jar --help            # full CLI flag list (inclu
 
 ### Tests
 
-Real JUnit 4 suite under `src/test/java/com/github/kwart/ldap/` — **8 tests, 7 pass, 1 `@Ignore`d**:
+JUnit 5 Jupiter suite (`org.junit:junit-bom:6.1.0`) under `src/test/java/com/github/kwart/ldap/` — **8 tests, 7 pass, 1 `@Disabled`**:
 
 | Class | Notes |
 |---|---|
-| `LdapServerTest` | 4 tests — basic bind + search |
+| `LdapServerTest` | 4 tests — `@ParameterizedTest` + `@MethodSource("data")` over `(ipv6, tls)`, basic bind + search |
 | `LdapServer2Test` | 1 test — multi-entry LDIF with `changetype: modify` |
 | `CustomPasswordTest` | 2 tests — `--admin-password` flag |
-| `StartTlsTest` | `@Ignore`d — pins `TLSv1.3` + `TLS_AES_128_GCM_SHA256` against ApacheDS 2.0.0-M24's MINA TLS stack which predates TLSv1.3. Failure is pre-existing on pure `upstream/startTls`, not introduced by the merge. Reactivates when ApacheDS is bumped to a version with TLSv1.3 support — un-`@Ignore` AND remove the bumped CHANGELOG note in the same commit. |
+| `StartTlsTest` | `@Disabled` — pins `TLSv1.3` + `TLS_AES_128_GCM_SHA256` against ApacheDS 2.0.0-M24's MINA TLS stack which predates TLSv1.3. Reactivates only when ApacheDS is bumped past M24 (a real Major migration — see Upgrade Backlog); un-`@Disable` + the StartTls reactivation comment in the test source drop in the same commit as the ApacheDS bump. |
 
-`make test` runs everything (the `@Ignore`d test is skipped, not failed).
+`make test` runs everything (the `@Disabled` test is skipped, not failed). Surefire's built-in JUnit 5 support handles the BOM; no `junit-platform-launcher` dependency needed.
 
 ## Architecture
 
@@ -55,7 +55,7 @@ Entry point is `com.github.kwart.ldap.LdapServer#main`, declared as the shaded J
 5. **`ldapServer.addExtendedOperationHandler(new StartTlsHandler())`** is unconditional — StartTLS is wired into the server even when no SSL keystore is supplied. The `StartTlsHandler` simply uses the configured keystore when a client requests StartTLS.
 6. Bind one `TcpTransport` for `ldap://`, optionally a second SSL-enabled transport for `ldaps://` when `--ssl-port` is set, then `ldapServer.start()`.
 
-**`CLIArguments`** is the single source of truth for flag definitions (JCommander annotations). `ExtCommander` is a thin wrapper that injects custom usage head/tail strings — don't conflate it with the flag definitions.
+**`CLIArguments`** is the single source of truth for flag definitions (JCommander annotations). **Do NOT mark `@Parameter` fields `final`** — JCommander 1.82 rejects `final` fields at parse time with `Cannot use final field ... as a parameter` (compiler-inlined-constant safety check). `ExtCommander` is a thin wrapper that registers a custom `IUsageFormatter` (`ExtUsageFormatter extends DefaultUsageFormatter`) to inject custom usage head/tail strings — JCommander 1.82 moved usage rendering to `IUsageFormatter`, so the legacy `usage(StringBuilder, String)` override is gone. Don't conflate `ExtCommander` with the flag definitions in `CLIArguments`.
 
 ## Docker image
 
@@ -99,19 +99,16 @@ A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old w
 
 `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` (Settings → Secrets and variables → Actions; used only by the `docker` job). `NVD_API_KEY` is OPTIONAL — without it the `cve-check` job still works but NVD lookups are rate-limited. `GITHUB_TOKEN` is auto-provisioned.
 
-## Legacy `scripts/`
-
-The `scripts/` directory (`build.sh`, `run.sh`, `push.sh`, `local-run.sh`, `set-env.sh`) predates the Makefile + `.env.example` and is **functionally superseded** by Make targets. Behavior is equivalent (`scripts/build.sh` → `make image-build`; `scripts/push.sh` → `make docker-login` + `make image-push` with safer stdin-based password handling). Kept on disk until a deliberate cleanup; safe to delete in a focused PR.
-
 ## Upgrade Backlog
 
 Genuinely deferred items waiting on upstream OR coupled to a downstream bump. Renovate handles the routine dep bumps automatically; only items below need human attention.
 
-- [ ] **ApacheDS 2.0.0-M24 → 2.0.0.AM27 (Renovate Wave 1 candidate).** Upstream's most recent milestone (Oct 2023). When the Renovate PR lands, **attempt to un-`@Ignore` `StartTlsTest`** in the same branch — if AM27's MINA TLS stack handles TLSv1.3 + `TLS_AES_128_GCM_SHA256`, the @Ignore comes out + the StartTLS reactivation note in the test source + the "ApacheDS bump" mention in this file drops. Verify empirically; don't assume.
-- [ ] **JUnit 4 → JUnit 5 Jupiter (`r6.1.0`).** Touches 4 test classes; `@RunWith(Parameterized.class)` on `LdapServerTest` becomes `@ParameterizedTest` + `@MethodSource`. Not urgent — JUnit 4 is in security-only mode but still maintained. ~4 hr migration. **Why:** modern assertion API, no compatibility liability.
-- [ ] **`users.ldif` (424 lines, fork-preserved).** Bundled in the shaded JAR but no test or code path references it. 12-year-old artifact carried forward. Consider dropping in a focused PR after confirming via `grep -r users.ldif src/` that nothing references it.
-- [ ] **`scripts/*.sh` legacy directory.** Functionally superseded by Make targets. Safe to delete in a focused PR.
-- [ ] **`maven.compiler.source=1.8` floor.** Tied to ApacheDS-M24's bytecode target. After ApacheDS AM27 lands, verify whether AM27 still ships bytecode 1.8 (it likely does — same milestone series) before considering a floor bump. The `release` profile's enforcer rule `[1.8,1.9)` would need to move too — and the `release` profile itself was removed in this fork; re-add it from upstream if Maven Central publishing is ever wanted.
+- [ ] **ApacheDS 2.0.0-M24 → 2.0.0.AM27 (Major migration — NOT a drop-in).** Empirically attempted in this session and rolled back. AM27 introduces three breaking changes that require a ground-up rewrite of `InMemoryDirectoryServiceFactory` + `InMemorySchemaPartition`:
+  1. **EhCache integration removed** — `org.apache.directory.server.core.shared.DefaultDnFactory` no longer takes a `CacheService`; `CacheConfiguration` / `CacheService` / `CacheManager` classes are gone from the API.
+  2. **`Dn.apply(SchemaManager)` removed** — replaced with re-constructing the DN: `suffixDn = new Dn(schemaManager, suffixDn)`. `InMemorySchemaPartition.doInit()`'s throws clause also tightened (`InvalidNameException` no longer accepted; `IOException` must be caught + wrapped in `LdapOtherException`).
+  3. **Transactional partition writes** — `AbstractBTreePartition.add()` asserts a `PartitionWriteTxn` is present in the `OperationContext`. Without it, every LDIF entry import throws `AssertionError` at `AbstractBTreePartition.java:769`. Fixing this requires threading `PartitionTxn` (or its `PartitionWriteTxn` subtype) through `importLdif()` and every `partition.add()` call site — substantial surface change.
+  Until upstream rewrites the partition wiring, **stay on M24**. When AM27 lands here, **also attempt to un-`@Disable` `StartTlsTest`** in the same branch — if AM27's MINA TLS stack handles TLSv1.3, the `@Disabled` comes out + the StartTLS reactivation comment in the test source drops.
+- [ ] **`maven.compiler.source=1.8` floor.** Tied to ApacheDS-M24's bytecode target. After ApacheDS AM27 lands (whenever the partition rewrite is done), verify whether AM27 still ships bytecode 1.8 before considering a floor bump. The `release` profile's enforcer rule `[1.8,1.9)` would need to move too — and the `release` profile itself was removed in this fork; re-add it from upstream if Maven Central publishing is ever wanted.
 
 ## Skills
 

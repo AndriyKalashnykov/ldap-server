@@ -5,7 +5,7 @@
 
 # ldap-server — In-Memory LDAP Server (Apache Directory)
 
-Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://directory.apache.org/apacheds/) 2.0.0-M24 — useful for integration testing, SSO simulators, and local development without standing up a real directory. The **runtime surface** exposes the LDAP protocol (default partition `dc=ldap,dc=example`) with optional LDAPS, configurable bind address / port, a swappable admin password (`uid=admin,ou=system`), and one-or-more `.ldif` files imported at boot via JCommander-driven CLI flags; the **delivery surface** ships as a self-contained Maven-shaded JAR, a multi-stage non-root Docker image on Docker Hub ([`andriykalashnykov/apacheds-ad`](https://hub.docker.com/r/andriykalashnykov/apacheds-ad)), toolchain-alignment guards keeping `.mise.toml` and `Dockerfile` in lockstep on Java 21 + Maven 3.9.11, a GitHub Actions pipeline gated by `dorny/paths-filter`, Trivy filesystem + image scans (CRITICAL/HIGH blocking on the image side), a TCP-probe smoke test, an LDAP-bind + search end-to-end gate before push, OWASP dependency-check (weekly cron + tag pushes + manual dispatch), and Renovate-managed dependencies.
+Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://directory.apache.org/apacheds/) 2.0.0-M24 — useful for integration testing, SSO simulators, and local development without standing up a real directory. The **runtime surface** exposes the LDAP protocol (default partition `dc=ldap,dc=example`) with optional LDAPS, configurable bind address / port, a swappable admin password (`uid=admin,ou=system`), and one-or-more `.ldif` files imported at boot via JCommander-driven CLI flags; the **delivery surface** ships as a self-contained Maven-shaded JAR, a multi-stage non-root Docker image on Docker Hub ([`andriykalashnykov/apacheds-ad`](https://hub.docker.com/r/andriykalashnykov/apacheds-ad)), toolchain-alignment guards keeping `.mise.toml` and `Dockerfile` in lockstep on Java 21 + Maven 3.9.16, a GitHub Actions pipeline gated by `dorny/paths-filter`, Trivy filesystem + image scans (CRITICAL/HIGH blocking on the image side), a TCP-probe smoke test, an LDAP-bind + search end-to-end gate before push, OWASP dependency-check (weekly cron + tag pushes + manual dispatch), and Renovate-managed dependencies.
 
 > This is a fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server) — every Java change lives upstream; the fork adds the Docker pipeline, Makefile, hardened CI, and Renovate. Java package `com.github.kwart.ldap` is intentionally kept aligned with upstream so future syncs stay clean diffs.
 
@@ -15,12 +15,12 @@ Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://dir
 |-----------|------------|
 | Language | Java (compiles on JDK 21; bytecode target 1.8 for ApacheDS compat) |
 | LDAP engine | Apache Directory Server 2.0.0-M24 |
-| Build | Maven 3.9.11 + `maven-shade-plugin` 3.3.0 (single runnable JAR) |
-| CLI parser | JCommander 1.32 |
-| Logging | SLF4J 1.7.36 + `slf4j-simple` |
-| Tests | JUnit 4.13.2 (8 tests; 1 `@Ignore`d) |
+| Build | Maven 3.9.16 + `maven-shade-plugin` 3.6.2 (single runnable JAR) |
+| CLI parser | JCommander 1.82 (`IUsageFormatter`-based) |
+| Logging | SLF4J 2.0.18 + `slf4j-simple` (ServiceLoader binding) |
+| Tests | JUnit 5 Jupiter 6.1.0 via `junit-bom` (8 tests; 1 `@Disabled`) |
 | Container | Multi-stage Dockerfile: `maven:3.9-eclipse-temurin-21` → `eclipse-temurin:21-jre`, non-root UID 10001, TCP HEALTHCHECK |
-| Version manager | [mise](https://mise.jdx.dev/) (`.mise.toml` pins Java 21 LTS + Maven 3.9.11) |
+| Version manager | [mise](https://mise.jdx.dev/) (`.mise.toml` pins Java 21 LTS + Maven 3.9.16) |
 | Dep management | Renovate (Maven + GitHub Actions + Dockerfile + `.mise.toml`) |
 | CI | GitHub Actions — paths-filter changes detector + `jdx/mise-action` + Trivy image scan + TCP smoke test |
 
@@ -115,7 +115,7 @@ java -Djavax.net.debug=ssl \
   -sp 10636 -skf /tmp/ldaps.keystore -skp 123456
 ```
 
-> StartTLS is also wired (the server registers a `StartTlsHandler`), but [`StartTlsTest`](src/test/java/com/github/kwart/ldap/StartTlsTest.java) is currently `@Ignore`d — ApacheDS 2.0.0-M24's MINA TLS stack predates TLSv1.3, and the test pins `TLSv1.3` + `TLS_AES_128_GCM_SHA256`. The test reactivates the moment ApacheDS is bumped to a version with TLSv1.3 support.
+> StartTLS is also wired (the server registers a `StartTlsHandler`), but [`StartTlsTest`](src/test/java/com/github/kwart/ldap/StartTlsTest.java) is currently `@Disabled` — ApacheDS 2.0.0-M24's MINA TLS stack predates TLSv1.3, and the test pins `TLSv1.3` + `TLS_AES_128_GCM_SHA256`. Reactivation is coupled to an ApacheDS Major migration (AM27 introduces breaking changes to the partition + cache API — see `CLAUDE.md` Upgrade Backlog).
 
 ## Docker
 
@@ -208,7 +208,7 @@ GitHub Actions runs on every push to `master`, every `v*` git tag, every pull re
 | Job | Triggers | Purpose |
 |-----|----------|---------|
 | `changes` | every event | [`dorny/paths-filter`](https://github.com/dorny/paths-filter) — doc-only PRs skip every job below |
-| `build` | code-changing events + every tag | Provisions Java 21 + Maven 3.9.11 via `jdx/mise-action`, restores `~/.m2` from `actions/cache`, runs `make ci` (alignment guards + lint + test + package), Trivy filesystem scan (informational), uploads `target/ldap-server.jar` as an artifact |
+| `build` | code-changing events + every tag | Provisions Java 21 + Maven 3.9.16 via `jdx/mise-action`, restores `~/.m2` from `actions/cache`, runs `make ci` (alignment guards + lint + test + package), Trivy filesystem scan (informational), uploads `target/ldap-server.jar` as an artifact |
 | `cve-check` | tag pushes + weekly cron + dispatch | OWASP dependency-check via `mvn org.owasp:dependency-check-maven:check`; NVD DB cached at `~/.m2/repository/org/owasp/dependency-check-data` for fast warm starts. NVD API key optional |
 | `release` | push to master OR `v*` tag | Downloads the JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release` |
 | `docker` | `v*` tag only | Build image for scan → Trivy CRITICAL/HIGH image scan → `make image-smoke-test` → `make e2e` (LDAP bind + search) → log in to Docker Hub → push single-arch `linux/amd64` image with `flavor: latest=true`. Every gate blocks the push |

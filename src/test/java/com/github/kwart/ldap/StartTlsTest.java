@@ -19,8 +19,8 @@
 
 package com.github.kwart.ldap;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.Socket;
 import java.security.SecureRandom;
@@ -43,10 +43,10 @@ import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509ExtendedTrustManager;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 /**
  * A simple test of running LDAP server.
@@ -57,7 +57,7 @@ public class StartTlsTest {
 
     private LdapServer ldapServer;
 
-    @Before
+    @BeforeEach
     public void before() throws Exception {
         CLIArguments cliArguments = new CLIArguments();
         new ExtCommander(cliArguments, new String[] { "-skf", "src/test/resources/tls-host-loopback-san.p12", "-skp", "123456",
@@ -65,13 +65,13 @@ public class StartTlsTest {
         ldapServer = new LdapServer(cliArguments);
     }
 
-    @After
+    @AfterEach
     public void after() throws Exception {
         ldapServer.stop();
     }
 
     @Test
-    @Ignore("Pinned TLSv1.3 + TLS_AES_128_GCM_SHA256 produces handshake_failure against ApacheDS 2.0.0-M24's MINA TLS stack (pre-TLSv1.3). Reactivate when apacheds-parent is bumped.")
+    @Disabled("Pinned TLSv1.3 + TLS_AES_128_GCM_SHA256 produces handshake_failure against ApacheDS 2.0.0-M24's MINA TLS stack (pre-TLSv1.3). Reactivate when apacheds-parent is bumped (a real Major migration — AM27 dropped the EhCache integration and switched to transactional partition writes; see CLAUDE.md Upgrade Backlog).")
     public void test() throws Exception {
         String host = "127.0.0.1";
         String port = "10389";

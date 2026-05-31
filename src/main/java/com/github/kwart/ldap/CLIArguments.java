@@ -33,8 +33,11 @@ public class CLIArguments {
     public static final String DEFAULT_ADDR = "0.0.0.0";
     public static final int DEFAULT_PORT = 10389;
 
+    // JCommander 1.82+ refuses `final` on @Parameter-bound fields because the
+    // compiler may inline reads of "compile-time constants" and miss values
+    // written by the parser. The list is populated by JCommander at parse time.
     @Parameter(description = "[LDIFs to import]")
-    private final List<String> ldifFiles = new ArrayList<String>();
+    private List<String> ldifFiles = new ArrayList<String>();
 
     @Parameter(names = { "--help", "-h" }, description = "shows this help and exits", help = true)
     private boolean help;

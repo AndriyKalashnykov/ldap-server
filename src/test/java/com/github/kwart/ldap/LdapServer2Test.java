@@ -23,7 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 
 public class LdapServer2Test {

@@ -19,7 +19,7 @@
 
 package com.github.kwart.ldap;
 
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.Properties;
 
@@ -27,15 +27,15 @@ import javax.naming.AuthenticationException;
 import javax.naming.Context;
 import javax.naming.ldap.InitialLdapContext;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class CustomPasswordTest {
 
     private LdapServer ldapServer;
 
-    @Before
+    @BeforeEach
     public void before() throws Exception {
         String[] args = new String[] { "-ap", "testPassword" };
         CLIArguments cliArguments = new CLIArguments();
@@ -43,7 +43,7 @@ public class CustomPasswordTest {
         ldapServer = new LdapServer(cliArguments);
     }
 
-    @After
+    @AfterEach
     public void after() throws Exception {
         ldapServer.stop();
     }
