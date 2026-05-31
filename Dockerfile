@@ -26,7 +26,7 @@ RUN test -s /workspace/target/ldap-server.jar
 # =============================================================================
 # Runtime stage — slim JRE, non-root, env-driven tunables
 # =============================================================================
-FROM eclipse-temurin:21-jre@sha256:010e0a06bd4e0184dec58626afb3ba727b42c56c91b977e2f0a9e0837e0fa3fb
+FROM eclipse-temurin:21-jre-alpine@sha256:704db3c40204a44f471191446ddd9cda5d60dab40f0e15c6507b815ed897238b
 
 # === Operator tunables (slot 2 — ARG defaults; see configuration.md) ===
 ARG APP_INTERNAL_PORT=10389
@@ -46,11 +46,10 @@ LABEL maintainer="AndriyKalashnykov@gmail.com" \
       org.opencontainers.image.source="https://github.com/AndriyKalashnykov/ldap-server" \
       org.opencontainers.image.description="In-memory LDAP server based on ApacheDS"
 
-# Non-root user. /usr/sbin/nologin denies interactive shells; no home dir
-# minimizes attack surface.
-RUN groupadd --system --gid ${APP_GID} ldap \
- && useradd  --system --uid ${APP_UID} --gid ${APP_GID} \
-        --no-create-home --shell /usr/sbin/nologin ldap
+# Non-root user. Alpine ships busybox `addgroup`/`adduser`; -S = system,
+# -D = no password, -H = no home. /sbin/nologin denies interactive shells.
+RUN addgroup -S -g ${APP_GID} ldap \
+ && adduser  -S -u ${APP_UID} -G ldap -H -D -s /sbin/nologin ldap
 
 RUN mkdir -p /ldap/ldif \
  && chown -R ${APP_UID}:${APP_GID} /ldap
@@ -65,13 +64,13 @@ USER ${APP_UID}
 EXPOSE ${APP_INTERNAL_PORT}
 
 # ApacheDS exposes only the LDAP protocol — no HTTP /healthz. Probe the
-# TCP listener via bash's /dev/tcp (bundled with eclipse-temurin's bash;
-# no apt-install of nc / curl needed). HEALTHCHECK flag values are
-# literal — Docker's parser does NOT expand ARG/ENV in --interval/etc.,
-# so timings are hardcoded here. The CMD's `${VAR}` expand at container
-# start, so HEALTHCHECK_HOST / APP_INTERNAL_PORT honor `docker run -e`.
+# TCP listener via busybox `nc -z` (bundled with alpine; no extra
+# package install needed). HEALTHCHECK flag values are literal — Docker's
+# parser does NOT expand ARG/ENV in --interval/etc., so timings are
+# hardcoded here. The CMD's `${VAR}` expand at container start, so
+# HEALTHCHECK_HOST / APP_INTERNAL_PORT honor `docker run -e`.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
-    CMD bash -c 'exec 3<>/dev/tcp/${HEALTHCHECK_HOST}/${APP_INTERNAL_PORT}' || exit 1
+    CMD nc -z "${HEALTHCHECK_HOST}" "${APP_INTERNAL_PORT}" || exit 1
 
 # Mount any directory with `.ldif` files to /ldap/ldif/ to seed the server,
 # e.g. `docker run -v ./ldif:/ldap/ldif/ ...`. An empty mount leaves the

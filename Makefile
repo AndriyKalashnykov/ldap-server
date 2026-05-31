@@ -202,7 +202,7 @@ e2e:
 	trap 'docker rm -f "'"$$SERVER"'" >/dev/null 2>&1 || true; docker network rm "'"$$NET"'" >/dev/null 2>&1 || true' EXIT INT TERM; \
 	docker run -d --name="$$SERVER" --network="$$NET" \
 		--entrypoint java \
-		--health-cmd "bash -c 'exec 3<>/dev/tcp/localhost/$(APP_INTERNAL_PORT)'" \
+		--health-cmd "nc -z localhost $(APP_INTERNAL_PORT)" \
 		--health-interval=2s --health-timeout=2s --health-start-period=5s --health-retries=10 \
 		"$(IMAGE_REF)" \
 		-jar /ldap/ldap-server.jar -b 0.0.0.0 -p $(APP_INTERNAL_PORT) >/dev/null; \
