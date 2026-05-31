@@ -5,7 +5,7 @@
 
 # ldap-server — In-Memory LDAP Server (Apache Directory)
 
-Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://directory.apache.org/apacheds/) 2.0.0-M24 — useful for integration testing, SSO simulators, and local development without standing up a real directory. The **runtime surface** exposes the LDAP protocol (default partition `dc=ldap,dc=example`) with optional LDAPS, configurable bind address / port, a swappable admin password (`uid=admin,ou=system`), and one-or-more `.ldif` files imported at boot via JCommander-driven CLI flags; the **delivery surface** ships as a self-contained Maven-shaded JAR, a multi-stage non-root Docker image on Docker Hub ([`andriykalashnykov/apacheds-ad`](https://hub.docker.com/r/andriykalashnykov/apacheds-ad)) built from `@sha256:`-digest-pinned base images, toolchain-alignment guards keeping `.mise.toml` and `Dockerfile` in lockstep on Java 21 + Maven 3.9.16, a GitHub Actions pipeline gated by `dorny/paths-filter`, Trivy filesystem + image scans (CRITICAL/HIGH blocking on the image side), a TCP-probe smoke test, an LDAP-bind + search end-to-end gate before push, OWASP dependency-check (weekly cron + tag pushes + manual dispatch), and Renovate-managed dependencies.
+Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://directory.apache.org/apacheds/) 2.0.0.AM27 — useful for integration testing, SSO simulators, and local development without standing up a real directory. The **runtime surface** exposes the LDAP protocol (default partition `dc=ldap,dc=example`) with optional LDAPS, configurable bind address / port, a swappable admin password (`uid=admin,ou=system`), and one-or-more `.ldif` files imported at boot via JCommander-driven CLI flags; the **delivery surface** ships as a self-contained Maven-shaded JAR, a multi-stage non-root Docker image on Docker Hub ([`andriykalashnykov/apacheds-ad`](https://hub.docker.com/r/andriykalashnykov/apacheds-ad)) built from `@sha256:`-digest-pinned base images, toolchain-alignment guards keeping `.mise.toml` and `Dockerfile` in lockstep on Java 21 + Maven 3.9.16, a GitHub Actions pipeline gated by `dorny/paths-filter`, Trivy filesystem + image scans (CRITICAL/HIGH blocking on the image side), a TCP-probe smoke test, an LDAP-bind + search end-to-end gate before push, OWASP dependency-check (weekly cron + tag pushes + manual dispatch), and Renovate-managed dependencies.
 
 > This is a fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server) — every Java change lives upstream; the fork adds the Docker pipeline, Makefile, hardened CI, and Renovate. Java package `com.github.kwart.ldap` is intentionally kept aligned with upstream so future syncs stay clean diffs.
 
@@ -13,12 +13,12 @@ Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://dir
 
 | Component | Technology |
 |-----------|------------|
-| Language | Java (compiles on JDK 21; bytecode target 1.8 for ApacheDS compat) |
-| LDAP engine | Apache Directory Server 2.0.0-M24 |
+| Language | Java 21 LTS (source + bytecode target 21; matches `eclipse-temurin:21-jre` runtime) |
+| LDAP engine | Apache Directory Server 2.0.0.AM27 |
 | Build | Maven 3.9.16 + `maven-shade-plugin` 3.6.2 (single runnable JAR) |
 | CLI parser | JCommander 1.82 (`IUsageFormatter`-based) |
 | Logging | SLF4J 2.0.18 + `slf4j-simple` (ServiceLoader binding) |
-| Tests | JUnit 5 Jupiter 6.1.0 via `junit-bom` (8 tests; 1 `@Disabled`) |
+| Tests | JUnit 5 Jupiter 6.1.0 via `junit-bom` (8 tests, all passing — incl. StartTLS over TLSv1.3) |
 | Container | Multi-stage Dockerfile: `maven:3.9-eclipse-temurin-21` → `eclipse-temurin:21-jre` (both `@sha256:`-digest-pinned), non-root UID 10001, TCP HEALTHCHECK |
 | Version manager | [mise](https://mise.jdx.dev/) (`.mise.toml` pins Java 21 LTS + Maven 3.9.16) |
 | Dep management | Renovate (Maven + GitHub Actions + Dockerfile + `.mise.toml`) |
@@ -115,7 +115,7 @@ java -Djavax.net.debug=ssl \
   -sp 10636 -skf /tmp/ldaps.keystore -skp 123456
 ```
 
-> StartTLS is also wired (the server registers a `StartTlsHandler`), but [`StartTlsTest`](src/test/java/com/github/kwart/ldap/StartTlsTest.java) is currently `@Disabled` — ApacheDS 2.0.0-M24's MINA TLS stack predates TLSv1.3, and the test pins `TLSv1.3` + `TLS_AES_128_GCM_SHA256`. Reactivation is coupled to an ApacheDS Major migration (AM27 introduces breaking changes to the partition + cache API — see `CLAUDE.md` Upgrade Backlog).
+> StartTLS is also wired (the server registers a `StartTlsHandler`) and exercised by [`StartTlsTest`](src/test/java/com/github/kwart/ldap/StartTlsTest.java), which negotiates TLSv1.3 + `TLS_AES_128_GCM_SHA256` against AM27's MINA TLS stack. If no `--ssl-keystore-file` is supplied, the server generates a self-signed EC certificate on startup so StartTLS + LDAPS work out of the box for tests and dev.
 
 ## Docker
 

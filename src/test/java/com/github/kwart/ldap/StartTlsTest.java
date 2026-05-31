@@ -45,7 +45,6 @@ import javax.net.ssl.X509ExtendedTrustManager;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -71,7 +70,6 @@ public class StartTlsTest {
     }
 
     @Test
-    @Disabled("Pinned TLSv1.3 + TLS_AES_128_GCM_SHA256 produces handshake_failure against ApacheDS 2.0.0-M24's MINA TLS stack (pre-TLSv1.3). Reactivate when apacheds-parent is bumped (a real Major migration — AM27 dropped the EhCache integration and switched to transactional partition writes; see CLAUDE.md Upgrade Backlog).")
     public void test() throws Exception {
         String host = "127.0.0.1";
         String port = "10389";

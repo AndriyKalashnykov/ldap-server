@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A single-module Maven project that wraps **Apache Directory Server 2.0.0-M24** as a self-contained, in-memory LDAP server. Maven-shaded into one runnable fat JAR (`target/ldap-server.jar`). No persistence — all directory data lives in memory and is lost on shutdown. CLI parsed via JCommander 1.82; default partition root is `dc=ldap,dc=example`; default admin bind is `uid=admin,ou=system` / `secret` on port 10389. Logging routed through SLF4J 2.0.x + `slf4j-simple` (ServiceLoader binding).
+A single-module Maven project that wraps **Apache Directory Server 2.0.0.AM27** as a self-contained, in-memory LDAP server. Maven-shaded into one runnable fat JAR (`target/ldap-server.jar`, ~16 MB). No persistence — all directory data lives in memory and is lost on shutdown. CLI parsed via JCommander 1.82; default partition root is `dc=ldap,dc=example`; default admin bind is `uid=admin,ou=system` / `secret` on port 10389. Logging routed through SLF4J 2.0.x + `slf4j-simple` (ServiceLoader binding).
 
 This repo is a **fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server)**. Java code is the upstream's; the fork adds the Docker pipeline (`andriykalashnykov/apacheds-ad` on Docker Hub), Makefile, hardened GitHub Actions workflow, Renovate config, and `.mise.toml` toolchain pinning. The Maven groupId was scrubbed to `io.github.andriykalashnykov` and `<scm>` / `<developers>` point at this fork; everything else in `pom.xml` is upstream's.
 
@@ -25,20 +25,20 @@ java -jar ./target/ldap-server.jar --help            # full CLI flag list (inclu
 
 `make ci` chains `deps → check-java-alignment → check-maven-alignment → lint → test → package`. The two alignment guards fail fast when the Java major in `.mise.toml` drifts from the Dockerfile `FROM` lines, or when the Maven minor drifts from the build-stage tag — silent toolchain desync is otherwise a recurring foot-gun on Renovate split-PR days. Both guards are mutation-tested (proven to go RED on intentional desync).
 
-`pom.xml` keeps `maven.compiler.source=1.8` AND has a `release` profile that enforces `[1.8,1.9)` via the enforcer plugin. **Don't "fix" this** — ApacheDS 2.0.0-M24 ships bytecode targeting 1.8 and the project intentionally preserves that compatibility floor while the build itself runs on JDK 21+. The JDK used to compile can be anything ≥ 1.8.
+`pom.xml` sets `maven.compiler.source=21` (matches the Dockerfile runtime `eclipse-temurin:21-jre`). AM27 itself ships bytecode 52 (Java 8) but our application can target whatever runtime we deploy on — the dep's floor does not constrain the consumer's target. The `release` profile that enforced `[1.8,1.9)` was removed in this fork; re-add it from upstream if Maven Central publishing is ever wanted.
 
 ### Tests
 
-JUnit 5 Jupiter suite (`org.junit:junit-bom:6.1.0`) under `src/test/java/com/github/kwart/ldap/` — **8 tests, 7 pass, 1 `@Disabled`**:
+JUnit 5 Jupiter suite (`org.junit:junit-bom:6.1.0`) under `src/test/java/com/github/kwart/ldap/` — **8 tests, all passing on AM27**:
 
 | Class | Notes |
 |---|---|
 | `LdapServerTest` | 4 tests — `@ParameterizedTest` + `@MethodSource("data")` over `(ipv6, tls)`, basic bind + search |
 | `LdapServer2Test` | 1 test — multi-entry LDIF with `changetype: modify` |
 | `CustomPasswordTest` | 2 tests — `--admin-password` flag |
-| `StartTlsTest` | `@Disabled` — pins `TLSv1.3` + `TLS_AES_128_GCM_SHA256` against ApacheDS 2.0.0-M24's MINA TLS stack which predates TLSv1.3. Reactivates only when ApacheDS is bumped past M24 (a real Major migration — see Upgrade Backlog); un-`@Disable` + the StartTls reactivation comment in the test source drop in the same commit as the ApacheDS bump. |
+| `StartTlsTest` | 1 test — pins `TLSv1.3` + `TLS_AES_128_GCM_SHA256`; passes on AM27's MINA TLS stack (the `@Disabled` was removed in the AM27 migration commit). |
 
-`make test` runs everything (the `@Disabled` test is skipped, not failed). Surefire's built-in JUnit 5 support handles the BOM; no `junit-platform-launcher` dependency needed.
+`make test` runs everything. Surefire's built-in JUnit 5 support handles the BOM; no `junit-platform-launcher` dependency needed.
 
 ## Architecture
 
@@ -105,14 +105,32 @@ A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old w
 
 ## Upgrade Backlog
 
-Genuinely deferred items waiting on upstream OR coupled to a downstream bump. Renovate handles the routine dep bumps automatically; only items below need human attention.
+Renovate handles routine dep bumps automatically. Currently no human-attention items — both prior backlog entries (ApacheDS AM27, `maven.compiler.source` floor) were resolved in this session. See [CHANGELOG.md](CHANGELOG.md) for details. Add new items here only when a genuinely-deferred upstream-blocked task surfaces.
 
-- [ ] **ApacheDS 2.0.0-M24 → 2.0.0.AM27 (Major migration — NOT a drop-in).** Empirically attempted in this session and rolled back. AM27 introduces three breaking changes that require a ground-up rewrite of `InMemoryDirectoryServiceFactory` + `InMemorySchemaPartition`:
-  1. **EhCache integration removed** — `org.apache.directory.server.core.shared.DefaultDnFactory` no longer takes a `CacheService`; `CacheConfiguration` / `CacheService` / `CacheManager` classes are gone from the API.
-  2. **`Dn.apply(SchemaManager)` removed** — replaced with re-constructing the DN: `suffixDn = new Dn(schemaManager, suffixDn)`. `InMemorySchemaPartition.doInit()`'s throws clause also tightened (`InvalidNameException` no longer accepted; `IOException` must be caught + wrapped in `LdapOtherException`).
-  3. **Transactional partition writes** — `AbstractBTreePartition.add()` asserts a `PartitionWriteTxn` is present in the `OperationContext`. Without it, every LDIF entry import throws `AssertionError` at `AbstractBTreePartition.java:769`. Fixing this requires threading `PartitionTxn` (or its `PartitionWriteTxn` subtype) through `importLdif()` and every `partition.add()` call site — substantial surface change.
-  Until upstream rewrites the partition wiring, **stay on M24**. When AM27 lands here, **also attempt to un-`@Disable` `StartTlsTest`** in the same branch — if AM27's MINA TLS stack handles TLSv1.3, the `@Disabled` comes out + the StartTLS reactivation comment in the test source drops.
-- [ ] **`maven.compiler.source=1.8` floor.** Tied to ApacheDS-M24's bytecode target. After ApacheDS AM27 lands (whenever the partition rewrite is done), verify whether AM27 still ships bytecode 1.8 before considering a floor bump. The `release` profile's enforcer rule `[1.8,1.9)` would need to move too — and the `release` profile itself was removed in this fork; re-add it from upstream if Maven Central publishing is ever wanted.
+### AM27 migration cheat-sheet (recorded so a future bump doesn't redo the research)
+
+AM27 (and presumably newer) introduces four breaking changes vs M24 that an in-memory wrapper must handle:
+
+1. **EhCache removed from `DirectoryService`.** `setCacheService(...)` is gone; `DefaultDnFactory` now uses an internal Caffeine cache. Delete the EhCache block in `InMemoryDirectoryServiceFactory.init()`.
+2. **`Dn.apply(SchemaManager)` removed.** Use `suffixDn = new Dn(schemaManager, suffixDn)` instead (api-ldap-model 2.1.x ctor at line 190 of `Dn.java`).
+3. **`AbstractLdifPartition.doInit()` signature tightened to `throws LdapException`.** Drop `InvalidNameException` and bare `Exception`; catch `IOException` inside and wrap in `LdapOtherException`.
+4. **Transactional partition writes (the load-bearing change).** `AbstractBTreePartition.add()` asserts a `PartitionWriteTxn` on the `OperationContext` (see `AbstractBTreePartition.java:765-770`). The canonical pattern lives in `DefaultOperationManager.java:421-429`:
+   ```java
+   PartitionWriteTxn writeTxn = partition.beginWriteTransaction();
+   try {
+       addContext.setTransaction(writeTxn);
+       partition.add(addContext);
+       writeTxn.commit();
+   } catch (LdapException le) {
+       writeTxn.abort();
+       throw le;
+   } catch (IOException ioe) {
+       writeTxn.abort();
+       throw new LdapOtherException(ioe.getMessage(), ioe);
+   }
+   ```
+   Wrap the schema-load loop in `InMemorySchemaPartition.doInit()` with one such transaction. `LdapServer.importLdif()` goes through `directoryService.getAdminSession().add()`, which routes through `DefaultOperationManager` and handles the transaction internally — no change needed there.
+5. **M24's CoreKeyStoreSpi fallback is gone.** AM27's `CertificateUtil.loadKeyStore(null, null)` returns `null`, so `LdapServer.start()` leaves `keyManagerFactory` null and `StartTlsHandler.setLdapServer()` NPEs. Generate a self-signed temp keystore when none is supplied: `CertificateUtil.createTempKeyStore("ldap-server-", "secret".toCharArray())`.
 
 ## Skills
 
