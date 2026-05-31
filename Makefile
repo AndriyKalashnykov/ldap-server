@@ -246,7 +246,7 @@ ci: deps check-java-alignment check-maven-alignment lint test package
 #ci-run: @ Run the GitHub Actions workflow locally via act
 # NOTE: act exercises the `changes`, `build`, and `ci-pass` jobs cleanly. The
 # `release` job needs a real GitHub Releases API context and the `docker` job
-# needs Docker Hub credentials + a tag ref — neither is reachable under `act`.
+# needs GHCR auth + a tag ref — neither is reachable under `act`.
 # For tag-only paths, validate via a real push or `gh workflow run`.
 ci-run:
 	@command -v act >/dev/null 2>&1 || { echo "Error: act required. Install via https://github.com/nektos/act"; exit 1; }
@@ -258,6 +258,23 @@ ci-run:
 		--artifact-server-port "$$ACT_PORT" \
 		--artifact-server-path "$$ARTIFACT_PATH"
 
+#renovate-validate: @ Validate renovate.json against the live Renovate schema (npx --yes renovate@latest)
+# `renovate@latest` (NOT bare `renovate`) avoids the npx-cache stale-binary
+# trap where a months-old cached package rejects current-schema fields like
+# `managerFilePatterns`. Uses the local-platform driver so no GitHub API
+# credentials are strictly required — but exporting `GH_ACCESS_TOKEN`
+# upgrades anonymous lookups to authenticated and avoids GitHub's 60-req/hr
+# anonymous cap when chasing release notes / version metadata.
+renovate-validate:
+	@command -v npx >/dev/null 2>&1 || { echo "Error: npx (Node.js) required. Install Node 24+ via mise or the Node.js download page."; exit 1; }
+	@if [ -n "$$GH_ACCESS_TOKEN" ]; then \
+		export GITHUB_COM_TOKEN="$$GH_ACCESS_TOKEN"; \
+	else \
+		echo "Warning: GH_ACCESS_TOKEN not set; some dependency lookups may be rate-limited or fail"; \
+	fi; \
+		npx --yes renovate@latest --platform=local
+
 .PHONY: help deps deps-check check-java-alignment check-maven-alignment \
 	build test package run-jar lint cve-check clean \
-	image-build image-run image-smoke-test e2e docker-login image-push ci ci-run
+	image-build image-run image-smoke-test e2e docker-login image-push \
+	ci ci-run renovate-validate

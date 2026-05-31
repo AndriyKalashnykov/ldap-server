@@ -53,15 +53,24 @@
       "groupName": "SLF4J"
     },
     {
-      "description": "Group Maven build plugins (shade, bundle, compiler, source, javadoc, gpg, enforcer, dependency, nexus-staging) into one PR — plugin bumps don't affect application runtime.",
+      "description": "Group Maven build plugins used by this project (maven-shade-plugin, maven-compiler-plugin, exec-maven-plugin, maven-bundle-plugin) plus the OWASP dependency-check plugin into one PR — plugin bumps don't affect application runtime.",
       "matchManagers": ["maven"],
       "matchPackageNames": [
         "/^org\\.apache\\.maven\\.plugins:/",
         "/^org\\.apache\\.felix:maven-bundle-plugin/",
         "/^org\\.codehaus\\.mojo:exec-maven-plugin/",
-        "/^org\\.sonatype\\.plugins:/"
+        "/^org\\.owasp:dependency-check-maven/"
       ],
       "groupName": "Maven plugins"
+    },
+    {
+      "description": "Group JUnit 5 Jupiter bumps — the BOM, jupiter, and jupiter-params ship together and must move in lockstep to keep Surefire's JUnit Platform Provider happy.",
+      "matchManagers": ["maven"],
+      "matchPackageNames": [
+        "/^org\\.junit:/",
+        "/^org\\.junit\\.jupiter:/"
+      ],
+      "groupName": "JUnit 5"
     }
   ]
 }
