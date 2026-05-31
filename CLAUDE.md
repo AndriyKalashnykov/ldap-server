@@ -108,7 +108,9 @@ The legacy `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` pair is no longer needed —
 
 ## Upgrade Backlog
 
-Renovate handles routine dep bumps automatically. Currently no human-attention items — both prior backlog entries (ApacheDS AM27, `maven.compiler.source` floor) were resolved in this session. See [CHANGELOG.md](CHANGELOG.md) for details. Add new items here only when a genuinely-deferred upstream-blocked task surfaces.
+Renovate handles routine dep bumps automatically. Add items here only when a genuinely-deferred, upstream-blocked task surfaces. See [CHANGELOG.md](CHANGELOG.md) for resolved items.
+
+- **`caffeine` 2.9.3 calls terminally-deprecated `sun.misc.Unsafe` memory methods (LOW priority, upstream-blocked).** Caffeine arrives *transitively via ApacheDS AM27* (`DefaultDnFactory`'s cache), and JDK 24+ warns on `sun.misc.Unsafe::objectFieldOffset` (`A terminally deprecated method in sun.misc.Unsafe has been called`). It's harmless today (build + tests green on JDK 25), but a future JDK that *removes* those methods would break ApacheDS — and thus the server — at boot. **Trigger to act:** a JDK release flipping `sun.misc.Unsafe` to deny-by-default/removed (the lifecycle is warn → deny → remove, several releases apart — not imminent). **Action:** watch for AM27 bumping its transitive Caffeine to 3.x (which dropped `Unsafe`); Renovate will surface the AM27 bump. Do **not** force a `dependencyManagement` override to Caffeine 3.x without verifying AM27 compatibility — AM27 is compiled against 2.x and the 2.x→3.x API changed. Interim escape hatch if a JDK denies `Unsafe` before AM27 updates: launch with `--sun-misc-unsafe-memory-access=allow`.
 
 ### AM27 migration cheat-sheet (recorded so a future bump doesn't redo the research)
 
