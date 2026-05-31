@@ -95,6 +95,8 @@ A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old w
 
 **`make ci-run` coverage gap.** `act push` exercises `changes` + `build` + `ci-pass` end-to-end. The tag-only `docker` + `cve-check` + `release` jobs need a real GitHub event context (tag ref, Releases API, Docker Hub creds) and won't run cleanly under `act` — validate those via a real push or `gh workflow run`.
 
+**Security stack: OWASP dependency-check + Trivy only — do NOT propose re-adding Snyk.** Maven dep CVEs are covered by OWASP DC (`cve-check` job, weekly cron + tag pushes, NVD-backed). Source/config vulns + secrets are covered by Trivy filesystem scan (`build` job, informational). Built-image vulns are covered by Trivy image scan (`docker` job, CRITICAL/HIGH blocking gate). The Snyk GitHub App was intentionally removed — it was account-level (read access to source), gated nothing, and 100% overlapped OWASP DC on Maven deps. If a future analysis suggests adding Snyk, decline with this reasoning.
+
 ### Required secrets
 
 `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` (Settings → Secrets and variables → Actions; used only by the `docker` job). `NVD_API_KEY` is OPTIONAL — without it the `cve-check` job still works but NVD lookups are rate-limited. `GITHUB_TOKEN` is auto-provisioned.
