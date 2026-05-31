@@ -181,7 +181,7 @@ jobs:
           make_latest: 'true'
           files: ldap-server.jar
 
-  # Build + push the Docker image to Docker Hub on v* tag pushes only
+  # Build + push the Docker image to GHCR on v* tag pushes only
   # (preserves legacy behavior). The multi-stage Dockerfile builds the JAR
   # from source — no dependency on the `release` job's GH Release upload.
   # Pre-push gates: Trivy image scan (CRITICAL/HIGH blocking) + smoke test
@@ -196,6 +196,7 @@ jobs:
     timeout-minutes: 25
     permissions:
       contents: read
+      packages: write          # required to publish to ghcr.io via GITHUB_TOKEN
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -206,7 +207,12 @@ jobs:
         id: meta
         uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/apacheds-ad
+          # Repo-namespace GHCR path (ghcr.io/<owner>/<repo>/<pkg>) — required
+          # for `GITHUB_TOKEN` to publish (user-namespace `ghcr.io/<owner>/<pkg>`
+          # requires a PAT with write:packages). metadata-action lowercases the
+          # produced tags automatically — `github.repository` preserves case
+          # but the output tags are all lowercase.
+          images: ghcr.io/${{ github.repository }}/apacheds-ad
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -252,11 +258,12 @@ jobs:
         run: make e2e IMAGE_REF=apacheds-ad:scan
 
       # ---- All gates passed: log in + push (second build = ~full cache hit)
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0

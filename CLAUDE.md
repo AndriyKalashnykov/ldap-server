@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A single-module Maven project that wraps **Apache Directory Server 2.0.0.AM27** as a self-contained, in-memory LDAP server. Maven-shaded into one runnable fat JAR (`target/ldap-server.jar`, ~16 MB). No persistence — all directory data lives in memory and is lost on shutdown. CLI parsed via JCommander 1.82; default partition root is `dc=ldap,dc=example`; default admin bind is `uid=admin,ou=system` / `secret` on port 10389. Logging routed through SLF4J 2.0.x + `slf4j-simple` (ServiceLoader binding).
 
-This repo is a **fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server)**. Java code is the upstream's; the fork adds the Docker pipeline (`andriykalashnykov/apacheds-ad` on Docker Hub), Makefile, hardened GitHub Actions workflow, Renovate config, and `.mise.toml` toolchain pinning. The Maven groupId was scrubbed to `io.github.andriykalashnykov` and `<scm>` / `<developers>` point at this fork; everything else in `pom.xml` is upstream's.
+This repo is a **fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server)**. Java code is the upstream's; the fork adds the Docker pipeline (`ghcr.io/andriykalashnykov/ldap-server/apacheds-ad` on GitHub Container Registry), Makefile, hardened GitHub Actions workflow, Renovate config, and `.mise.toml` toolchain pinning. The Maven groupId was scrubbed to `io.github.andriykalashnykov` and `<scm>` / `<developers>` point at this fork; everything else in `pom.xml` is upstream's.
 
 **Java package `com.github.kwart.ldap` is intentionally kept aligned with upstream** (not renamed to the fork's identity) so future `git merge upstream/master` runs stay clean diffs. Don't propose renaming it.
 
@@ -88,12 +88,12 @@ Six jobs, every action SHA-pinned:
 | `build` | code-changing events + every tag | `jdx/mise-action` provisions Java + Maven from `.mise.toml`; `actions/cache` keyed on `hashFiles('pom.xml')` for `~/.m2/repository`. Runs `make ci` (alignment guards + lint + test + package). Trivy filesystem scan (informational). Uploads `target/ldap-server.jar` as artifact. |
 | `cve-check` | tag pushes + weekly cron + dispatch | OWASP dependency-check via `mvn org.owasp:dependency-check-maven:check`. NVD DB cached at `~/.m2/repository/org/owasp/dependency-check-data` keyed on `pom.xml`. `NVD_API_KEY` optional (routed via `~/.m2/settings.xml`, never argv). |
 | `release` | push to `master` OR `v*` tag | Downloads JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release`. `contents: write` scoped to this job only. |
-| `docker` | `v*` tag only | Build image for scan (load: true, amd64) → Trivy CRITICAL/HIGH image scan → `make image-smoke-test IMAGE_REF=apacheds-ad:scan` → `make e2e IMAGE_REF=apacheds-ad:scan` → log in to Docker Hub → push single-arch `linux/amd64` image with `provenance: false` + `sbom: false` and `flavor: latest=true` (only retags `:latest` for the highest-precedence semver). Each gate blocks the push. |
+| `docker` | `v*` tag only | Build image for scan (load: true, amd64) → Trivy CRITICAL/HIGH image scan → `make image-smoke-test IMAGE_REF=apacheds-ad:scan` → `make e2e IMAGE_REF=apacheds-ad:scan` → log in to **GHCR** (`${{ github.actor }}` + auto-provisioned `GITHUB_TOKEN`; the docker job has `packages: write`) → push single-arch `linux/amd64` image to `ghcr.io/${{ github.repository }}/apacheds-ad` with `provenance: false` + `sbom: false` and `flavor: latest=true` (only retags `:latest` for the highest-precedence semver). Each gate blocks the push. |
 | `ci-pass` | always | Single branch-protection aggregator. Treats skipped as pass (handles tag-only `docker`/`cve-check`, master-or-tag-only `release`, doc-only-PR-skipping everything). |
 
 A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old workflow runs and caches from deleted branches weekly via the native `gh` CLI (the previous `Mattraks/delete-workflow-runs` was migrated off per portfolio policy — single-maintainer third-party action, replaced by built-in tooling).
 
-**`make ci-run` coverage gap.** `act push` exercises `changes` + `build` + `ci-pass` end-to-end. The tag-only `docker` + `cve-check` + `release` jobs need a real GitHub event context (tag ref, Releases API, Docker Hub creds) and won't run cleanly under `act` — validate those via a real push or `gh workflow run`.
+**`make ci-run` coverage gap.** `act push` exercises `changes` + `build` + `ci-pass` end-to-end. The tag-only `docker` + `cve-check` + `release` jobs need a real GitHub event context (tag ref, Releases API, GHCR / `GITHUB_TOKEN` with `packages: write`) and won't run cleanly under `act` — validate those via a real push or `gh workflow run`.
 
 **Security stack: OWASP dependency-check + Trivy only — do NOT propose re-adding Snyk.** Maven dep CVEs are covered by OWASP DC (`cve-check` job, weekly cron + tag pushes, NVD-backed). Source/config vulns + secrets are covered by Trivy filesystem scan (`build` job, informational). Built-image vulns are covered by Trivy image scan (`docker` job, CRITICAL/HIGH blocking gate). The Snyk GitHub App was intentionally removed — it was account-level (read access to source), gated nothing, and 100% overlapped OWASP DC on Maven deps. If a future analysis suggests adding Snyk, decline with this reasoning.
 
@@ -101,7 +101,10 @@ A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old w
 
 ### Required secrets
 
-`DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` (Settings → Secrets and variables → Actions; used only by the `docker` job). `NVD_API_KEY` is OPTIONAL — without it the `cve-check` job still works but NVD lookups are rate-limited. `GITHUB_TOKEN` is auto-provisioned.
+- **`GITHUB_TOKEN`** — auto-provisioned by GitHub Actions; used by the `docker` job (GHCR publish, scoped via `permissions: packages: write`) and the `release` job (GitHub Release upload, scoped via `permissions: contents: write`). No manual configuration needed.
+- **`NVD_API_KEY`** — OPTIONAL secret (Settings → Secrets and variables → Actions). Without it the `cve-check` job still works but NVD lookups are rate-limited. Routed via `~/.m2/settings.xml`, never argv.
+
+The legacy `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` pair is no longer needed — the project publishes to GHCR (`ghcr.io/<owner>/<repo>/apacheds-ad`) via `GITHUB_TOKEN`. Delete those secrets from the repo if they're still set.
 
 ## Upgrade Backlog
 

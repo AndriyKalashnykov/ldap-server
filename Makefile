@@ -11,7 +11,14 @@ APP_NAME           := ldap-server
 CURRENTTAG         := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
 
 # === Docker image coordinates (mirror .env.example) ===
-DOCKER_REGISTRY    ?= registry-1.docker.io
+# Default registry: ghcr.io. DOCKER_LOGIN is your GitHub username; the
+# canonical GHCR path for this project is
+# `ghcr.io/<owner>/ldap-server/apacheds-ad` (repo-namespace) — set
+# DOCKER_LOGIN=<owner>/ldap-server for a local `make image-push` that
+# matches what CI publishes. The bare-namespace form
+# `ghcr.io/<owner>/apacheds-ad` requires a PAT with `write:packages`
+# scope (GITHUB_TOKEN cannot publish to user-namespace).
+DOCKER_REGISTRY    ?= ghcr.io
 DOCKER_LOGIN       ?=
 IMAGE_NAME         ?= apacheds-ad
 IMAGE_TAG          ?= latest

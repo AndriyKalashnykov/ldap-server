@@ -9,7 +9,44 @@ The fork inherits the upstream Java code from
 fork-owned changes (Docker pipeline, Makefile, hardened CI, Renovate config,
 and dependency / source migrations driven by the fork) are recorded below.
 
-## [1.1.1] — 2026-05-31
+## [1.1.2] — 2026-05-31
+
+### Changed
+
+- **Image registry: Docker Hub → GHCR.** The `docker` job now publishes
+  to `ghcr.io/<owner>/ldap-server/apacheds-ad` using the auto-provisioned
+  `GITHUB_TOKEN` (scoped via `permissions: packages: write` on the
+  docker job only). Migration touches:
+  - `.github/workflows/build-test-push.yml` — `docker/metadata-action`
+    images: `ghcr.io/${{ github.repository }}/apacheds-ad`;
+    `docker/login-action` registry `ghcr.io`, username
+    `${{ github.actor }}`, password `${{ secrets.GITHUB_TOKEN }}`;
+    job-level `packages: write` added.
+  - `Makefile` — `DOCKER_REGISTRY ?= ghcr.io` (was `registry-1.docker.io`).
+  - `.env.example` — `DOCKER_REGISTRY=ghcr.io`.
+  - `CLAUDE.md` + `README.md` — every Docker-Hub reference rewritten
+    to GHCR; Required-secrets table no longer lists `DOCKERHUB_*`
+    secrets (legacy pair can be deleted from the repo); fork-identity
+    sentence updated.
+
+  The legacy `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` secrets are no
+  longer used by any workflow step and should be removed from the
+  repo. The 2021-dated PAT was the immediate trigger for this
+  migration — its expiration blocked the v1.1.1 image push despite
+  every CVE gate passing.
+
+  The legacy Docker Hub image `andriykalashnykov/apacheds-ad` will
+  not receive further updates; consumers should switch to
+  `ghcr.io/andriykalashnykov/ldap-server/apacheds-ad` starting at
+  v1.1.2.
+
+## [1.1.1] — 2026-05-31 — superseded by 1.1.2
+
+Cut as the patch over the v1.1.0 CVE-blocked release; the v1.1.1
+`docker` job passed all gates (Trivy, smoke, e2e) but its `Log in to
+Docker Hub` step failed (expired 2021 PAT). No Docker Hub image
+landed for v1.1.1; the security content shipped in v1.1.2 along with
+the GHCR migration.
 
 ### Security
 
