@@ -4,49 +4,107 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A single-module Maven project that wraps ApacheDS 2.0.0-M24 as a self-contained in-memory LDAP server, shaded into one runnable fat JAR (`target/ldap-server.jar`). No persistence — all directory data lives in memory and is lost on shutdown. CLI parsed via JCommander; default partition root is `dc=jboss,dc=org`; default admin bind is `uid=admin,ou=system` / `secret` on port 10389.
+A single-module Maven project that wraps **Apache Directory Server 2.0.0-M24** as a self-contained, in-memory LDAP server. Maven-shaded into one runnable fat JAR (`target/ldap-server.jar`). No persistence — all directory data lives in memory and is lost on shutdown. CLI parsed via JCommander; default partition root is `dc=ldap,dc=example`; default admin bind is `uid=admin,ou=system` / `secret` on port 10389.
+
+This repo is a **fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server)**. Java code is the upstream's; the fork adds the Docker pipeline (`andriykalashnykov/apacheds-ad` on Docker Hub), Makefile, hardened GitHub Actions workflow, Renovate config, and `.mise.toml` toolchain pinning. The Maven groupId was scrubbed to `io.github.andriykalashnykov` and `<scm>` / `<developers>` point at this fork; everything else in `pom.xml` is upstream's.
+
+**Java package `com.github.kwart.ldap` is intentionally kept aligned with upstream** (not renamed to the fork's identity) so future `git merge upstream/master` runs stay clean diffs. Don't propose renaming it.
 
 ## Build, run, test
 
-JDK 18 + Maven (CI uses Temurin 18; `pom.xml` still sets `maven.compiler.source=1.8`, so don't "fix" that — it's intentional baseline compatibility while the build runs on a newer JDK).
+JDK 21 LTS + Maven 3.9.11, both pinned in [`.mise.toml`](.mise.toml). `make deps` installs mise on first run, then `mise install` provisions the toolchain.
 
 ```bash
-mvn clean package                                    # produces target/ldap-server.jar (shaded)
+make deps                                            # one-time mise + Java/Maven bootstrap
+make ci                                              # lint + test + package (single command for the local pipeline)
 java -jar ./target/ldap-server.jar ./target/classes/ # run with bundled LDIFs as seed data
-java -jar ./target/ldap-server.jar --help            # full CLI flag list
+java -jar ./target/ldap-server.jar --help            # full CLI flag list (includes --admin-password, --ssl-*)
 ```
 
-`scripts/local-run.sh` chains `mvn clean install` + run. `scripts/build.sh` / `scripts/run.sh` / `scripts/push.sh` operate on the Docker image and require `DOCKER_LOGIN` / `DOCKER_PWD` env vars (not committed; edit `scripts/set-env.sh` locally).
+`pom.xml` keeps `maven.compiler.source=1.8` AND has a `release` profile that enforces `[1.8,1.9)` via the enforcer plugin. **Don't "fix" this** — ApacheDS 2.0.0-M24 ships bytecode targeting 1.8 and the project intentionally preserves that compatibility floor while the build itself runs on JDK 21+. The JDK used to compile can be anything ≥ 1.8.
 
-### "Tests"
+### Tests
 
-There is **no JUnit suite** — `pom.xml` declares no test dependencies and `src/test` does not exist. `mvn test` runs to completion as a no-op. What look like tests are actually executable client smoke tools that live under `src/main/java` and each have their own `main(...)`:
+Real JUnit 4 suite under `src/test/java/com/github/kwart/ldap/` — **8 tests, 7 pass, 1 `@Ignore`d**:
 
-- `LdapTest` — connects, optionally over LDAPS with a no-verification trust manager
-- `Authenticate` — simple bind against `<ldapURL> <userDN> <password>`
-- `AuthenticateWithSearch` — bind + subtree search by `uid`
+| Class | Notes |
+|---|---|
+| `LdapServerTest` | 4 tests — basic bind + search |
+| `LdapServer2Test` | 1 test — multi-entry LDIF with `changetype: modify` |
+| `CustomPasswordTest` | 2 tests — `--admin-password` flag |
+| `StartTlsTest` | `@Ignore`d — pins `TLSv1.3` + `TLS_AES_128_GCM_SHA256` against ApacheDS 2.0.0-M24's MINA TLS stack which predates TLSv1.3. Failure is pre-existing on pure `upstream/startTls`, not introduced by the merge. Reactivates when ApacheDS is bumped to a version with TLSv1.3 support — un-`@Ignore` AND remove the bumped CHANGELOG note in the same commit. |
 
-Run one via `java -cp target/ldap-server.jar org.jboss.test.ldap.Authenticate ldap://localhost:10389 uid=jduke,ou=Users,dc=jboss,dc=org theduke` (server must be running separately). If a real test suite is added later, the `pom.xml` needs a test-scope JUnit/Surefire setup first.
+`make test` runs everything (the `@Ignore`d test is skipped, not failed).
 
 ## Architecture
 
-Entry point is `org.jboss.test.ldap.LdapServer#main`, declared as the shaded JAR's `Main-Class`. The startup sequence (read `LdapServer.java` end-to-end before changing it — these steps are order-sensitive):
+Entry point is `com.github.kwart.ldap.LdapServer#main`, declared as the shaded JAR's `Main-Class` via `maven-shade-plugin`. The startup sequence is **order-sensitive** — read `LdapServer.java` end-to-end before changing any step:
 
-1. `InMemoryDirectoryServiceFactory.init("ds")` — builds an ApacheDS `DirectoryService` whose schema partition is `InMemorySchemaPartition` (loads schema entries from classpath rather than disk; this is the load-bearing piece that makes the server "no config files needed").
-2. `importLdif(cliArguments.getLdifFiles())` — if no LDIF args, loads bundled `src/main/resources/jboss-org.ldif`; otherwise accepts a mix of `.ldif` files and/or a directory (directory mode filters by `.ldif` extension, case-insensitive). For each entry, `checkPartition` creates a new `AvlPartition` on demand if the entry's parent DN doesn't already exist — this is how arbitrary LDIFs work without pre-declaring partitions.
-3. Bind one `TcpTransport` for `ldap://`, optionally a second SSL-enabled transport for `ldaps://` if `--ssl-port` is set, then `ldapServer.start()`.
+1. **`InMemoryDirectoryServiceFactory.init("ds")`** — builds an ApacheDS `DirectoryService` whose schema partition is `InMemorySchemaPartition`, loading schema entries from the classpath rather than disk. This is the load-bearing piece that makes the server "no config files needed."
+2. **`directoryService.setAllowAnonymousAccess(cliArguments.isAllowAnonymous())`** then **`importLdif(cliArguments.getLdifFiles())`**.
+3. **`importLdif(List<String> ldifFiles)`** — combines two upstream features merged in this fork:
+   - **No args** → loads bundled `src/main/resources/ldap-example.ldif`.
+   - **One or more paths** → for each path, if it's a directory, iterate `*.ldif` files inside (case-insensitive `.ldif` filter, fork-added); if it's a file, import it directly.
+   - Each `LdifReader` is constructed via the local `newLdifReader(path)` helper which overrides `parseEntry()` — upstream's workaround for ApacheDS's inability to parse LDIF files that contain BOTH `changetype: add`/no-changetype entries AND `changetype: modify` entries.
+   - `checkPartition` creates a new `AvlPartition` on demand if the entry's parent DN doesn't already exist; this is how arbitrary LDIFs work without pre-declaring partitions.
+4. **Optional `--admin-password`** → modifies `userPassword` on `uid=admin,ou=system` before the listener comes up.
+5. **`ldapServer.addExtendedOperationHandler(new StartTlsHandler())`** is unconditional — StartTLS is wired into the server even when no SSL keystore is supplied. The `StartTlsHandler` simply uses the configured keystore when a client requests StartTLS.
+6. Bind one `TcpTransport` for `ldap://`, optionally a second SSL-enabled transport for `ldaps://` when `--ssl-port` is set, then `ldapServer.start()`.
 
-`CLIArguments` is the single source of truth for flag definitions (JCommander annotations); `ExtCommander` is a thin wrapper that adds custom usage head/tail strings.
+**`CLIArguments`** is the single source of truth for flag definitions (JCommander annotations). `ExtCommander` is a thin wrapper that injects custom usage head/tail strings — don't conflate it with the flag definitions.
 
 ## Docker image
 
-`Dockerfile` does **not** build from source. It downloads `ldap-server.jar` from the GitHub Releases `latest` tag of this repo. This means:
+Multi-stage Dockerfile, builds from source — does NOT download a released JAR.
 
-- Editing Java code and re-running `docker build` will produce an image with the **previous** released JAR, not your changes. For local end-to-end testing, build the JAR with Maven and bind-mount it, or temporarily rewrite the `Dockerfile` to `COPY target/ldap-server.jar .`.
-- The image's `latest` tag is updated by CI on every push to `master` (release-replace), and the image is only pushed to Docker Hub when the workflow runs on a **git tag** (`github.ref_type == 'tag'`) — pushes to `master` build the image but skip the push step.
+- **Builder**: `maven:3.9-eclipse-temurin-21` runs `mvn -B -DskipTests clean package` with a BuildKit cache mount on `~/.m2`.
+- **Runtime**: `eclipse-temurin:21-jre`. Non-root user UID/GID 10001 (created via `useradd`, no home, `/usr/sbin/nologin` shell). Owns `/ldap`.
+- **HEALTHCHECK**: `bash -c 'exec 3<>/dev/tcp/${HEALTHCHECK_HOST}/${APP_INTERNAL_PORT}'`. Uses bash's `/dev/tcp` because (a) ApacheDS exposes only the LDAP protocol — no HTTP `/healthz` — and (b) `eclipse-temurin:21-jre` ships bash but not `curl`/`nc`/`wget`. **No apt install in the runtime layer.**
+- **`HEALTHCHECK` flag timings are LITERAL** (`--interval=30s --timeout=3s --start-period=20s --retries=3`) because Docker's parser does NOT expand ARG/ENV in those slots. The CMD's `${VAR}` inside the nested `bash -c '...'` ARE expanded at container start, so `HEALTHCHECK_HOST` and `APP_INTERNAL_PORT` honor `docker run -e ...` overrides.
+- **CMD**: shell form so `${APP_INTERNAL_PORT}` is honored — `java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT} /ldap/ldif/`.
 
-The `ADD https://www.random.org/...randbyte` line is intentional cache-busting so the next `wget` always re-fetches the released JAR — leave it alone unless replacing the whole download mechanism.
+### Docker workflows
+
+```bash
+make docker-build        # multi-stage build from src/ (uses DOCKER_LOGIN/IMAGE_NAME/IMAGE_TAG env)
+make docker-smoke-test   # boot the container, poll docker inspect until Health.Status == "healthy" (90s timeout)
+make docker-run          # interactive run with $(LDIF_DIR) bind-mounted into /ldap/ldif/
+```
+
+The runtime image's CMD references `/ldap/ldif/` — mount any directory containing `.ldif` files there to seed entries. Empty mount = server starts with no entries (matches legacy behavior; does NOT fall back to bundled defaults when an empty-but-present `--ldifs` arg is supplied).
 
 ## CI (`.github/workflows/build-test-push.yml`)
 
-Triggers: push to `master`, push to `v*` tags, and PRs. Concurrency group cancels in-flight runs on the same ref. Steps run sequentially: Maven test → Maven package → delete + recreate the `latest` GitHub Release → upload `ldap-server.jar` as the release asset → Buildx image build → Docker Hub push (tag refs only). Secrets used: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, plus the default `GITHUB_TOKEN`.
+Five jobs, every action SHA-pinned:
+
+| Job | Triggers | Notes |
+|---|---|---|
+| `changes` | every event | `dorny/paths-filter` — doc-only PRs (anything matching `**.md`, `docs/**`, `LICENSE`, etc., except `CLAUDE.md` which is re-included) skip every job below. `base: ${{ github.event_name == 'push' && 'master' \|\| '' }}` to handle act + PR-event annotation cases. |
+| `build` | code-changing events + every tag | `jdx/mise-action` provisions Java + Maven from `.mise.toml`; `actions/cache` keyed on `hashFiles('pom.xml')` for `~/.m2/repository`. Runs `make ci`. Uploads `target/ldap-server.jar` as artifact. |
+| `release` | push to `master` OR `v*` tag | Downloads JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release` (replaces the deprecated `actions/create-release` + `actions/upload-release-asset` combo). `contents: write` scoped to this job only. |
+| `docker` | `v*` tag only | Build image for scan (load: true, amd64) → Trivy CRITICAL/HIGH scan → `make docker-smoke-test IMAGE_REF=apacheds-ad:scan` → log in to Docker Hub → push single-arch `linux/amd64` image with `provenance: false` + `sbom: false`. Each gate blocks the push. |
+| `ci-pass` | always | Single branch-protection aggregator. Treats skipped as pass (handles tag-only `docker`, master-or-tag-only `release`, doc-only-PR-skipping everything). |
+
+A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old workflow runs and caches from deleted branches weekly via the native `gh` CLI (the previous `Mattraks/delete-workflow-runs` was migrated off per portfolio policy — single-maintainer third-party action, replaced by built-in tooling).
+
+### Required secrets
+
+`DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` (configured under Settings → Secrets and variables → Actions; used only by the `docker` job). `GITHUB_TOKEN` is auto-provisioned.
+
+## Legacy `scripts/`
+
+The `scripts/` directory (`build.sh`, `run.sh`, `push.sh`, `local-run.sh`, `set-env.sh`) predates the Makefile + `.env.example` and is **functionally superseded** by Make targets. Behavior is equivalent (`scripts/build.sh` → `make docker-build`; `scripts/push.sh` → `make docker-login` + `make docker-push` with safer stdin-based password handling). Kept on disk until a deliberate cleanup; safe to delete in a focused PR.
+
+## Skills
+
+Use the following skills when working on related files:
+
+| File(s) | Skill |
+|---------|-------|
+| `Makefile` | `/makefile` |
+| `renovate.json` | `/renovate` |
+| `README.md` | `/readme` |
+| `.github/workflows/*.{yml,yaml}` | `/ci-workflow` |
+| `Dockerfile` | `/harden-image-pipeline` |
+
+When spawning subagents, always pass conventions from the respective skill into the agent's prompt.
