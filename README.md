@@ -209,7 +209,7 @@ GitHub Actions runs on every push to `master`, every `v*` git tag, every pull re
 |-----|----------|---------|
 | `changes` | every event | [`dorny/paths-filter`](https://github.com/dorny/paths-filter) — doc-only PRs skip every job below |
 | `build` | code-changing events + every tag | Provisions Java 25 + Maven 3.9.16 via `jdx/mise-action`, restores `~/.m2` from `actions/cache`, runs `make ci` (alignment guards + lint + test + package), Trivy filesystem scan (informational), uploads `target/ldap-server.jar` as an artifact |
-| `cve-check` | tag pushes + weekly cron + dispatch | OWASP dependency-check via `mvn org.owasp:dependency-check-maven:check`; NVD DB cached at `~/.m2/repository/org/owasp/dependency-check-data` for fast warm starts. **`NVD_API_KEY` strongly recommended** — without it the plugin's parallel NVD fetcher fails on cold cache (anonymous rate-limiting exhausts its connection pool) |
+| `cve-check` | tag pushes + weekly cron + dispatch | OWASP dependency-check via `mvn org.owasp:dependency-check-maven:check` (NVD + Sonatype OSS Index analyzers); NVD DB cached at `~/.m2/repository/org/owasp/dependency-check-data`, keyed on the ISO week so version bumps don't force a cold fetch. **`NVD_API_KEY` strongly recommended** (without it the NVD fetch fails on cold cache); **`OSS_INDEX_USER`/`OSS_INDEX_TOKEN`** enable OSS Index (else it's silently disabled) |
 | `release` | push to master OR `v*` tag | Downloads the JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release` |
 | `docker` | `v*` tag only | Build image for scan → Trivy CRITICAL/HIGH image scan → `make image-smoke-test` → `make e2e` (LDAP bind + search) → log in to GHCR (`${{ github.actor }}` + auto-provisioned `GITHUB_TOKEN`; job has `packages: write`) → push single-arch `linux/amd64` image to `ghcr.io/<owner>/ldap-server/apacheds-ad` with `flavor: latest=true`. Every gate blocks the push |
 | `ci-pass` | always | `if: always() && contains(needs.*.result, 'failure')` — single aggregator for branch protection |
@@ -223,6 +223,7 @@ Configure under **Settings → Secrets and variables → Actions**.
 | Name | Type | Used by | How to obtain |
 |------|------|---------|---------------|
 | `NVD_API_KEY` | Secret (**strongly recommended**) | `cve-check` job — without it, the dep-check 12.2.2 plugin's parallel NVD fetcher hits an upstream NPE on cold cache and the job fails | Free API key from [NIST NVD](https://nvd.nist.gov/developers/request-an-api-key); routed via `~/.m2/settings.xml`, never via argv |
+| `OSS_INDEX_USER` + `OSS_INDEX_TOKEN` | Secret (**recommended**) | `cve-check` job — enables the Sonatype OSS Index analyzer (second vuln source); without them it's silently disabled (warning only) and coverage drops to NVD-only | Free account at [OSS Index](https://ossindex.sonatype.org/) — user is the account email, token its API token; routed via `~/.m2/settings.xml` (`-DossIndexServerId=ossindex`), never via argv |
 | `GITHUB_TOKEN` | _(auto-provisioned)_ | `docker` (GHCR publish, `packages: write`), `release` (GitHub Release, `contents: write`), `cleanup-runs` | GitHub injects automatically |
 
 ## License
