@@ -97,6 +97,8 @@ A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old w
 
 **Security stack: OWASP dependency-check + Trivy only — do NOT propose re-adding Snyk.** Maven dep CVEs are covered by OWASP DC (`cve-check` job, weekly cron + tag pushes, NVD-backed). Source/config vulns + secrets are covered by Trivy filesystem scan (`build` job, informational). Built-image vulns are covered by Trivy image scan (`docker` job, CRITICAL/HIGH blocking gate). The Snyk GitHub App was intentionally removed — it was account-level (read access to source), gated nothing, and 100% overlapped OWASP DC on Maven deps. If a future analysis suggests adding Snyk, decline with this reasoning.
 
+**`actions/upload-artifact` pinned at v4.6.2 — do NOT bump to v5/v6/v7 until `nektos/act` ships v4 blob-storage protocol support.** v5.0.0 bumped `@actions/artifact` to v4, which speaks a new blob-upload protocol that `act`'s built-in `--artifact-server-path` does not implement. Empirically verified 2026-05-31: bumping to v6.0.0 makes `make ci-run` fail in the `Upload shaded JAR` step with `Error unauthorized`, breaking the local CI mirror. v4.6.2 still works on real GitHub Actions and on `act`; GitHub annotates the runs with a Node 20 deprecation notice (deadline 2026-06-16 — at which point Node 24 is forced on by default; v4 will still run, just on the new default runtime). Revisit when act adds v4 protocol support OR when a v4.7+ tag ships Node 24 support without the protocol bump.
+
 ### Required secrets
 
 `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` (Settings → Secrets and variables → Actions; used only by the `docker` job). `NVD_API_KEY` is OPTIONAL — without it the `cve-check` job still works but NVD lookups are rate-limited. `GITHUB_TOKEN` is auto-provisioned.
