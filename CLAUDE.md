@@ -103,6 +103,16 @@ A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old w
 
 The `scripts/` directory (`build.sh`, `run.sh`, `push.sh`, `local-run.sh`, `set-env.sh`) predates the Makefile + `.env.example` and is **functionally superseded** by Make targets. Behavior is equivalent (`scripts/build.sh` → `make image-build`; `scripts/push.sh` → `make docker-login` + `make image-push` with safer stdin-based password handling). Kept on disk until a deliberate cleanup; safe to delete in a focused PR.
 
+## Upgrade Backlog
+
+Genuinely deferred items waiting on upstream OR coupled to a downstream bump. Renovate handles the routine dep bumps automatically; only items below need human attention.
+
+- [ ] **ApacheDS 2.0.0-M24 → 2.0.0.AM27 (Renovate Wave 1 candidate).** Upstream's most recent milestone (Oct 2023). When the Renovate PR lands, **attempt to un-`@Ignore` `StartTlsTest`** in the same branch — if AM27's MINA TLS stack handles TLSv1.3 + `TLS_AES_128_GCM_SHA256`, the @Ignore comes out + the StartTLS reactivation note in the test source + the "ApacheDS bump" mention in this file drops. Verify empirically; don't assume.
+- [ ] **JUnit 4 → JUnit 5 Jupiter (`r6.1.0`).** Touches 4 test classes; `@RunWith(Parameterized.class)` on `LdapServerTest` becomes `@ParameterizedTest` + `@MethodSource`. Not urgent — JUnit 4 is in security-only mode but still maintained. ~4 hr migration. **Why:** modern assertion API, no compatibility liability.
+- [ ] **`users.ldif` (424 lines, fork-preserved).** Bundled in the shaded JAR but no test or code path references it. 12-year-old artifact carried forward. Consider dropping in a focused PR after confirming via `grep -r users.ldif src/` that nothing references it.
+- [ ] **`scripts/*.sh` legacy directory.** Functionally superseded by Make targets. Safe to delete in a focused PR.
+- [ ] **`maven.compiler.source=1.8` floor.** Tied to ApacheDS-M24's bytecode target. After ApacheDS AM27 lands, verify whether AM27 still ships bytecode 1.8 (it likely does — same milestone series) before considering a floor bump. The `release` profile's enforcer rule `[1.8,1.9)` would need to move too — and the `release` profile itself was removed in this fork; re-add it from upstream if Maven Central publishing is ever wanted.
+
 ## Skills
 
 Use the following skills when working on related files:
