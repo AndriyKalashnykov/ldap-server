@@ -89,6 +89,13 @@ jobs:
           skip-dirs: 'target,.git'
 
       - name: Upload shaded JAR
+        # Skipped under act (env.ACT=true). act's built-in artifact server
+        # implements only GitHub's v4 blob-upload protocol, so upload-artifact
+        # v5+ breaks the local `make ci-run` mirror (proto decode error). The
+        # upload is GitHub-platform plumbing — `make ci`/package already proves
+        # the JAR exists — so skipping it under act lets us track the latest
+        # action instead of pinning at v4.x. Runs normally on real GitHub.
+        if: ${{ !env.ACT }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ldap-server-jar
@@ -136,7 +143,9 @@ jobs:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: make cve-check
       - name: Upload CVE report
-        if: always()
+        # always() so the report uploads even when the scan step fails;
+        # !env.ACT skips it under act (see "Upload shaded JAR" rationale).
+        if: ${{ always() && !env.ACT }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cve-report
@@ -151,8 +160,14 @@ jobs:
   # both jobs run in parallel after `build`.
   release:
     needs: [build]
+    # Gate on build having actually SUCCEEDED, not merely "not failed".
+    # On a doc-only push the `changes` filter skips `build`, so no
+    # `ldap-server-jar` artifact is produced; `!failure()` treats that
+    # skip as OK and the job would run, then fail at download-artifact
+    # ("Artifact not found"). `needs.build.result == 'success'` makes
+    # release skip cleanly on doc-only pushes (ci-pass treats skip as pass).
     if: |
-      !failure() && !cancelled() &&
+      needs.build.result == 'success' &&
       github.event_name == 'push' && (
         github.ref == 'refs/heads/master' ||
         startsWith(github.ref, 'refs/tags/')
