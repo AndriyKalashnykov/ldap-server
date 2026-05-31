@@ -13,13 +13,13 @@ Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://dir
 
 | Component | Technology |
 |-----------|------------|
-| Language | Java 25 LTS (source + bytecode target 25; matches `eclipse-temurin:25-jre` runtime) |
+| Language | Java 25 LTS (source + bytecode target 25; matches `eclipse-temurin:25-jre-alpine` runtime) |
 | LDAP engine | Apache Directory Server 2.0.0.AM27 |
 | Build | Maven 3.9.16 + `maven-shade-plugin` 3.6.2 (single runnable JAR) |
 | CLI parser | JCommander 1.82 (`IUsageFormatter`-based) |
 | Logging | SLF4J 2.0.18 + `slf4j-simple` (ServiceLoader binding) |
 | Tests | JUnit 5 Jupiter 6.1.0 via `junit-bom` (8 tests, all passing — incl. StartTLS over TLSv1.3) |
-| Container | Multi-stage Dockerfile: `maven:3.9-eclipse-temurin-25` → `eclipse-temurin:25-jre` (both `@sha256:`-digest-pinned), non-root UID 10001, TCP HEALTHCHECK |
+| Container | Multi-stage Dockerfile: `maven:3.9-eclipse-temurin-25` → `eclipse-temurin:25-jre-alpine` (both `@sha256:`-digest-pinned), non-root UID 10001, TCP HEALTHCHECK |
 | Version manager | [mise](https://mise.jdx.dev/) (`.mise.toml` pins Java 25 LTS + Maven 3.9.16) |
 | Dep management | Renovate (Maven + GitHub Actions + Dockerfile + `.mise.toml`) |
 | CI | GitHub Actions — paths-filter changes detector + `jdx/mise-action` + Trivy image scan + TCP smoke test |
