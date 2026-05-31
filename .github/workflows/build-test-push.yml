@@ -151,8 +151,14 @@ jobs:
   # both jobs run in parallel after `build`.
   release:
     needs: [build]
+    # Gate on build having actually SUCCEEDED, not merely "not failed".
+    # On a doc-only push the `changes` filter skips `build`, so no
+    # `ldap-server-jar` artifact is produced; `!failure()` treats that
+    # skip as OK and the job would run, then fail at download-artifact
+    # ("Artifact not found"). `needs.build.result == 'success'` makes
+    # release skip cleanly on doc-only pushes (ci-pass treats skip as pass).
     if: |
-      !failure() && !cancelled() &&
+      needs.build.result == 'success' &&
       github.event_name == 'push' && (
         github.ref == 'refs/heads/master' ||
         startsWith(github.ref, 'refs/tags/')
