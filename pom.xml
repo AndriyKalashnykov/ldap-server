@@ -14,6 +14,12 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <version.org.apache.ds>2.0.0.AM27</version.org.apache.ds>
         <version.junit>6.1.0</version.junit>
+        <!-- CVE override: AM27 pulls bc*-jdk15on 1.70 transitively (CVE-2024-29857
+             7.5, CVE-2024-34447 7.7). The jdk15on line ended at 1.70; the fix is
+             only in the renamed jdk18on line, so we exclude the jdk15on artifacts
+             on the apacheds deps and add jdk18on here. Removable (revert to AM27's
+             transitive) once ApacheDS ships a release on bc-jdk18on >= 1.78. -->
+        <version.org.bouncycastle>1.84</version.org.bouncycastle>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>${maven.compiler.source}</maven.compiler.target>
         <exec.mainClass>com.github.kwart.ldap.LdapServer</exec.mainClass>
@@ -151,6 +157,12 @@
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-log4j12</artifactId>
                 </exclusion>
+                <!-- Drop the vulnerable bc*-jdk15on:1.70 transitives (pulls
+                     bcpkix/bcutil via apacheds-core); replaced by jdk18on below. -->
+                <exclusion>
+                    <groupId>org.bouncycastle</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
@@ -161,6 +173,33 @@
         <dependency>
             <groupId>org.apache.directory.server</groupId>
             <artifactId>apacheds-protocol-ldap</artifactId>
+            <exclusions>
+                <!-- Drop the vulnerable bcprov-jdk15on:1.70 transitive;
+                     replaced by jdk18on below. -->
+                <exclusion>
+                    <groupId>org.bouncycastle</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- BouncyCastle: explicit jdk18on 1.84 replacing AM27's transitive
+             bc*-jdk15on 1.70 (see version.org.bouncycastle note). bcprov is
+             needed by apacheds-protocol-ldap; bcpkix (+ bcutil) by apacheds-core. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>${version.org.bouncycastle}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>${version.org.bouncycastle}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcutil-jdk18on</artifactId>
+            <version>${version.org.bouncycastle}</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
