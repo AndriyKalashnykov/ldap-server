@@ -36,6 +36,11 @@ BIND_ADDRESS       ?= 0.0.0.0
 #   make image-build APP_INTERNAL_PORT=10399
 APP_INTERNAL_PORT  ?= 10389
 
+# Mermaid CLI image for `mermaid-lint` (validates README C4 diagram). Renovate-
+# tracked via the customManager regex in renovate.json.
+# renovate: datasource=docker depName=minlag/mermaid-cli
+MERMAID_CLI_VERSION ?= 11.15.0
+
 #help: @ List available tasks
 help:
 	@echo "Usage: make COMMAND"
@@ -118,7 +123,7 @@ run-jar: package
 	java -jar "$(JAR_PATH)" "$${args[@]}" "$(LDIF_DIR)"
 
 #lint: @ Validate pom.xml + shell-script executable-bit guard
-lint: deps
+lint: deps mermaid-lint
 	@mvn -B validate
 	@# Safety check rule #8: any committed shell script must be +x or CI fails with exit 126.
 	@NONEXEC=$$(find . -maxdepth 3 -name '*.sh' -not -executable -not -path './target/*' -not -path './.git/*' 2>/dev/null); \
@@ -126,6 +131,32 @@ lint: deps
 		echo "Error: shell scripts missing +x bit:"; echo "$$NONEXEC" | sed 's/^/  /'; \
 		exit 1; \
 	fi
+
+#mermaid-lint: @ Validate Mermaid diagrams in markdown via minlag/mermaid-cli
+mermaid-lint:
+	@if [ -n "$${ACT:-}" ]; then echo "mermaid-lint: skipped under act (docker-in-docker bind-mount path mismatch); runs on real CI."; exit 0; fi
+	@command -v docker >/dev/null 2>&1 || { echo "ERROR: docker is required for mermaid-lint"; exit 1; }
+	@set -euo pipefail; \
+	MD_FILES=$$(grep -lF '```mermaid' README.md CLAUDE.md AGENTS.md 2>/dev/null || true); \
+	if [ -z "$$MD_FILES" ]; then echo "No Mermaid blocks found — skipping."; exit 0; fi; \
+	IMAGE=minlag/mermaid-cli:$(MERMAID_CLI_VERSION); \
+	for attempt in 1 2 3; do \
+		if docker pull --quiet "$$IMAGE" >/dev/null 2>&1; then break; fi; \
+		if [ "$$attempt" -eq 3 ]; then echo "ERROR: docker pull $$IMAGE failed after 3 attempts"; exit 1; fi; \
+		delay=$$((attempt * 5)); echo "  ! docker pull failed (attempt $$attempt/3); retrying in $${delay}s..."; sleep "$$delay"; \
+	done; \
+	FAILED=0; \
+	for md in $$MD_FILES; do \
+		echo "Validating Mermaid blocks in $$md..."; \
+		LOG=$$(mktemp); \
+		if docker run --rm -v "$$PWD:/data:ro" "$$IMAGE" -i "/data/$$md" -o "/tmp/$$(basename $$md .md).svg" >"$$LOG" 2>&1; then \
+			echo "  ✓ All blocks rendered cleanly."; \
+		else \
+			echo "  ✗ Parse error in $$md:"; sed 's/^/    /' "$$LOG"; FAILED=$$((FAILED + 1)); \
+		fi; \
+		rm -f "$$LOG"; \
+	done; \
+	[ "$$FAILED" -eq 0 ] || { echo "mermaid-lint: $$FAILED file(s) failed"; exit 1; }
 
 #cve-check: @ OWASP dependency-check (Maven + transitive deps)
 # Uses the fully-qualified `org.owasp:dependency-check-maven:check` coordinate
@@ -286,6 +317,6 @@ renovate-validate:
 		npx --yes renovate@latest --platform=local
 
 .PHONY: help deps deps-check check-java-alignment check-maven-alignment \
-	build test package run-jar lint cve-check clean \
+	build test package run-jar lint mermaid-lint cve-check clean \
 	image-build image-run image-smoke-test e2e docker-login image-push \
 	ci ci-run renovate-validate

@@ -3,11 +3,21 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Renovate enabled](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](https://app.renovatebot.com/dashboard#github/AndriyKalashnykov/ldap-server)
 
-# ldap-server — In-Memory LDAP Server (Apache Directory)
+# In-Memory LDAP Server (Apache Directory) — drop-in for tests, SSO mocks & dev
 
 Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://directory.apache.org/apacheds/) 2.0.0.AM27 — useful for integration testing, SSO simulators, and local development without standing up a real directory. The **runtime surface** exposes the LDAP protocol (default partition `dc=ldap,dc=example`) with optional LDAPS, configurable bind address / port, a swappable admin password (`uid=admin,ou=system`), and one-or-more `.ldif` files imported at boot via JCommander-driven CLI flags; the **delivery surface** ships as a self-contained Maven-shaded JAR, a multi-stage non-root Docker image on [GHCR](https://github.com/AndriyKalashnykov/ldap-server/pkgs/container/ldap-server%2Fapacheds-ad) (`ghcr.io/andriykalashnykov/ldap-server/apacheds-ad`) built from `@sha256:`-digest-pinned base images, toolchain-alignment guards keeping `.mise.toml` and `Dockerfile` in lockstep on Java 25 + Maven 3.9.16, a GitHub Actions pipeline gated by `dorny/paths-filter`, Trivy filesystem + image scans (CRITICAL/HIGH blocking on the image side), a TCP-probe smoke test, an LDAP-bind + search end-to-end gate before push, OWASP dependency-check (weekly cron + tag pushes + manual dispatch), and Renovate-managed dependencies.
 
 > This is a fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server) — every Java change lives upstream; the fork adds the Docker pipeline, Makefile, hardened CI, and Renovate. Java package `com.github.kwart.ldap` is intentionally kept aligned with upstream so future syncs stay clean diffs.
+
+```mermaid
+C4Context
+    title ldap-server — in-memory LDAP directory for tests, SSO mocks & dev
+    Person(client, "App / test / CI client", "Binds and searches over LDAP")
+    System(srv, "ldap-server", "ApacheDS 2.0.0.AM27, in-memory; LDAP :10389 plus optional LDAPS / StartTLS; ships as one shaded JAR or a non-root Docker image")
+    System_Ext(ldif, "LDIF seed", "Bundled ldap-example.ldif or a mounted .ldif directory, imported at boot")
+    Rel(client, srv, "bind + search", "LDAP / LDAPS")
+    Rel(ldif, srv, "seeds entries at startup")
+```
 
 ## Tech Stack
 
