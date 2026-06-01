@@ -196,7 +196,8 @@ Run `make help` to see every target with its description.
 | `make test` | Run JUnit tests |
 | `make package` | Build the shaded runnable JAR at `target/ldap-server.jar` |
 | `make run-jar` | Run the packaged JAR with the bundled LDIF |
-| `make lint` | Validate `pom.xml` + shell-script executable-bit guard |
+| `make lint` | Validate `pom.xml` + shell-script executable-bit guard + `mermaid-lint` |
+| `make mermaid-lint` | Validate README Mermaid diagrams via `minlag/mermaid-cli` (skipped under act) |
 | `make cve-check` | OWASP dependency-check (transitive deps; ~2 GB NVD download on first run) |
 | `make clean` | Remove Maven build artifacts |
 

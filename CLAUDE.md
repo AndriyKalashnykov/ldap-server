@@ -23,7 +23,7 @@ java -jar ./target/ldap-server.jar ./target/classes/ # run with bundled LDIFs as
 java -jar ./target/ldap-server.jar --help            # full CLI flag list (includes --admin-password, --ssl-*)
 ```
 
-`make ci` chains `deps → check-java-alignment → check-maven-alignment → lint → test → package`. The two alignment guards fail fast when the Java major in `.mise.toml` drifts from the Dockerfile `FROM` lines, or when the Maven minor drifts from the build-stage tag — silent toolchain desync is otherwise a recurring foot-gun on Renovate split-PR days. Both guards are mutation-tested (proven to go RED on intentional desync).
+`make ci` chains `deps → check-java-alignment → check-maven-alignment → lint → test → package`. The two alignment guards fail fast when the Java major in `.mise.toml` drifts from the Dockerfile `FROM` lines, or when the Maven minor drifts from the build-stage tag — silent toolchain desync is otherwise a recurring foot-gun on Renovate split-PR days. Both guards are mutation-tested (proven to go RED on intentional desync). `make lint` also runs **`mermaid-lint`** — validates the README C4 hero diagram via `minlag/mermaid-cli` (`MERMAID_CLI_VERSION` pinned + Renovate-tracked through a Makefile customManager); it skips under `act` (docker-in-docker bind-mount mismatch) and runs on real CI.
 
 `pom.xml` sets `maven.compiler.source=25` (matches the Dockerfile runtime `eclipse-temurin:25-jre`). AM27 itself ships bytecode 52 (Java 8) but our application can target whatever runtime we deploy on — the dep's floor does not constrain the consumer's target. The `release` profile that enforced `[1.8,1.9)` was removed in this fork; re-add it from upstream if Maven Central publishing is ever wanted.
 

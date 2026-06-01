@@ -67,6 +67,7 @@ Multi-stage `Dockerfile`, **builds from source** (does not download a released J
 - **Builder**: `maven:3.9-eclipse-temurin-25` runs `mvn -B -DskipTests clean package` with a BuildKit cache mount on `~/.m2`.
 - **Runtime**: `eclipse-temurin:25-jre-alpine`. Non-root user UID/GID 10001 (busybox `addgroup`/`adduser`, no home, `/sbin/nologin`), owns `/ldap`. No `apk add` in the runtime layer.
 - **HEALTHCHECK**: `nc -z ${HEALTHCHECK_HOST} ${APP_INTERNAL_PORT}` (busybox netcat) — probes the LDAP TCP listener since ApacheDS exposes no HTTP endpoint. The flag *timings* are literal because Docker's parser does not expand ARG/ENV in those slots; the CMD's `${VAR}` honor `docker run -e ...` overrides.
-- **CMD** (shell form): `java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT} /ldap/ldif/`. Mount a directory of `.ldif` files into `/ldap/ldif/` to seed entries.
+- **CMD** (shell form): `java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT} /ldap/ldif/`. The image is **pre-seeded** — the Dockerfile `COPY`s `ldap-example.ldif` into `/ldap/ldif/`, so a bare `docker run` starts with the example tree; bind-mount a directory of `.ldif` files over `/ldap/ldif/` to replace it.
+- **Supply chain**: tagged images are cosign keyless-signed (OIDC) with an SPDX SBOM attestation; `provenance`/`sbom` stay false on the index (keeps the GHCR OS/Arch tab clean).
 
 Container workflows: `make image-build`, `make image-smoke-test`, `make image-run`, `make e2e`. The `e2e` target overrides the entrypoint with no LDIF arg so the server loads the bundled `ldap-example.ldif` defaults.
