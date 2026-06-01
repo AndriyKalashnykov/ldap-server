@@ -9,6 +9,36 @@ The fork inherits the upstream Java code from
 fork-owned changes (Docker pipeline, Makefile, hardened CI, Renovate config,
 and dependency / source migrations driven by the fork) are recorded below.
 
+## [1.2.2] — 2026-06-01
+
+Image-delivery enhancements + supply-chain signing. The shaded JAR is
+functionally unchanged from 1.2.1; all changes are to the Docker image, CI,
+and docs.
+
+### Added
+
+- **cosign keyless OIDC signing + SPDX SBOM attestation** on every tagged
+  image. After the Trivy + smoke + e2e gates and push, the `docker` job signs
+  the pushed digest (Sigstore/Fulcio + Rekor; `id-token: write`) and attaches
+  an `anchore/sbom-action`-generated SPDX SBOM via `cosign attest`. Both are
+  separate `.sig`/`.att` artifacts — `provenance`/`sbom` stay **false** on the
+  image index so the GHCR "OS/Arch" tab stays clean. Verify recipe in the
+  README CI/CD section.
+- **Image pre-seeded with `ldap-example.ldif`.** The Dockerfile `COPY`s the
+  bundled example tree into `/ldap/ldif/`, so a bare `docker run` (no mount)
+  now starts with data (`uid=jduke`/`theduke` + Admin group). A bind mount
+  over `/ldap/ldif/` still replaces it; an empty-dir mount shadows it.
+- **README C4Context hero diagram** + a `make mermaid-lint` gate
+  (`minlag/mermaid-cli`, Renovate-tracked via a Makefile customManager, wired
+  into `make lint`).
+
+### Changed
+
+- README accuracy + usability pass: Tech Stack runtime image corrected to
+  `eclipse-temurin:25-jre-alpine`, H1 aligned with the GitHub About field,
+  Docker section documents seeding + admin/user credentials + base DN,
+  `renovate-validate` target documented. AGENTS.md kept in sync.
+
 ## [1.2.1] — 2026-05-31
 
 Security patch over v1.2.0. v1.2.0's `cve-check` passed only because the
