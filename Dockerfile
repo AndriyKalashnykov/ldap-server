@@ -59,6 +59,13 @@ WORKDIR /ldap
 COPY --from=build --chown=${APP_UID}:${APP_GID} \
      /workspace/target/ldap-server.jar /ldap/ldap-server.jar
 
+# Pre-seed the bundled example tree so a bare `docker run` (no mount) starts
+# WITH data (dc=ldap,dc=example: uid=jduke/theduke + an Admin group). A
+# `-v <dir>:/ldap/ldif/` bind mount shadows this directory, so custom seeds
+# still fully replace it.
+COPY --from=build --chown=${APP_UID}:${APP_GID} \
+     /workspace/src/main/resources/ldap-example.ldif /ldap/ldif/ldap-example.ldif
+
 USER ${APP_UID}
 
 EXPOSE ${APP_INTERNAL_PORT}
@@ -72,9 +79,10 @@ EXPOSE ${APP_INTERNAL_PORT}
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
     CMD nc -z "${HEALTHCHECK_HOST}" "${APP_INTERNAL_PORT}" || exit 1
 
-# Mount any directory with `.ldif` files to /ldap/ldif/ to seed the server,
-# e.g. `docker run -v ./ldif:/ldap/ldif/ ...`. An empty mount leaves the
-# server running with no entries (it does NOT fall back to bundled defaults
-# when an empty `--ldifs` arg is supplied — that's a regression from no-arg
-# invocation, but matches the legacy Dockerfile's behavior).
+# /ldap/ldif/ ships pre-seeded with ldap-example.ldif (above), so a bare
+# `docker run` starts with the example tree. Bind-mount your own directory
+# (`docker run -v ./ldif:/ldap/ldif/ ...`) to replace it with custom `.ldif`
+# files. A mount of an EMPTY directory shadows the baked-in seed and leaves the
+# server running with no entries (it does NOT fall back to bundled defaults on
+# an empty directory arg — matches legacy behavior).
 CMD java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT} /ldap/ldif/
