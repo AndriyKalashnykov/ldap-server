@@ -144,6 +144,23 @@ docker run -it --rm -p 10389:10389 \
   ghcr.io/andriykalashnykov/ldap-server/apacheds-ad:latest
 ```
 
+**Connecting.** The directory's built-in administrator exists regardless of how data is seeded:
+
+| | Value |
+|---|---|
+| Admin bind DN | `uid=admin,ou=system` |
+| Admin password | `secret` — override with `--admin-password <new>` |
+| Default partition / search base | `dc=ldap,dc=example` |
+
+With the example data above there is also a regular user `uid=jduke,ou=Users,dc=ldap,dc=example` (password `theduke`). Verify a running container:
+
+```bash
+ldapsearch -x -H ldap://127.0.0.1:10389 -D 'uid=admin,ou=system' -w secret \
+  -b dc=ldap,dc=example '(objectClass=*)'
+```
+
+The admin account is the ApacheDS system administrator and is independent of the loaded LDIF — when you mount your own `.ldif`, those files define the regular entries (their own DNs and `userPassword` values) while admin stays `uid=admin,ou=system` / `secret`.
+
 Or build locally:
 
 ```bash
