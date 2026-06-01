@@ -5,7 +5,7 @@
 
 # In-Memory LDAP Server (Apache Directory) — drop-in for tests, SSO mocks & dev
 
-Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://directory.apache.org/apacheds/) 2.0.0.AM27 — useful for integration testing, SSO simulators, and local development without standing up a real directory. The **runtime surface** exposes the LDAP protocol (default partition `dc=ldap,dc=example`) with optional LDAPS, configurable bind address / port, a swappable admin password (`uid=admin,ou=system`), and one-or-more `.ldif` files imported at boot via JCommander-driven CLI flags; the **delivery surface** ships as a self-contained Maven-shaded JAR, a multi-stage non-root Docker image on [GHCR](https://github.com/AndriyKalashnykov/ldap-server/pkgs/container/ldap-server%2Fapacheds-ad) (`ghcr.io/andriykalashnykov/ldap-server/apacheds-ad`) built from `@sha256:`-digest-pinned base images, toolchain-alignment guards keeping `.mise.toml` and `Dockerfile` in lockstep on Java 25 + Maven 3.9.16, a GitHub Actions pipeline gated by `dorny/paths-filter`, Trivy filesystem + image scans (CRITICAL/HIGH blocking on the image side), a TCP-probe smoke test, an LDAP-bind + search end-to-end gate before push, OWASP dependency-check (weekly cron + tag pushes + manual dispatch), and Renovate-managed dependencies.
+Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://directory.apache.org/apacheds/) 2.0.0.AM27 — useful for integration testing, SSO simulators, and local development without standing up a real directory. The **runtime surface** exposes the LDAP protocol (default partition `dc=ldap,dc=example`) with optional LDAPS, configurable bind address / port, a swappable admin password (`uid=admin,ou=system`), and one-or-more `.ldif` files imported at boot via JCommander-driven CLI flags; the **delivery surface** ships as a self-contained Maven-shaded JAR, a multi-stage non-root Docker image on [GHCR](https://github.com/AndriyKalashnykov/ldap-server/pkgs/container/ldap-server%2Fapacheds-ad) (`ghcr.io/andriykalashnykov/ldap-server/apacheds-ad`) built from `@sha256:`-digest-pinned base images, toolchain-alignment guards keeping `.mise.toml` and `Dockerfile` in lockstep on Java 25 + Maven 3.9.16, a GitHub Actions pipeline gated by `dorny/paths-filter`, Trivy filesystem + image scans (CRITICAL/HIGH blocking on the image side), a TCP-probe smoke test, an LDAP-bind + search end-to-end gate before push, cosign keyless image signing + SPDX SBOM attestation on tagged releases, OWASP dependency-check (NVD + Sonatype OSS Index; weekly cron + tag pushes + manual dispatch), and Renovate-managed dependencies.
 
 > This is a fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server) — every Java change lives upstream; the fork adds the Docker pipeline, Makefile, hardened CI, and Renovate. Java package `com.github.kwart.ldap` is intentionally kept aligned with upstream so future syncs stay clean diffs.
 
@@ -252,10 +252,28 @@ GitHub Actions runs on every push to `master`, every `v*` git tag, every pull re
 | `build` | code-changing events + every tag | Provisions Java 25 + Maven 3.9.16 via `jdx/mise-action`, restores `~/.m2` from `actions/cache`, runs `make ci` (alignment guards + lint + test + package), Trivy filesystem scan (informational), uploads `target/ldap-server.jar` as an artifact |
 | `cve-check` | tag pushes + weekly cron + dispatch | OWASP dependency-check via `mvn org.owasp:dependency-check-maven:check` (NVD + Sonatype OSS Index analyzers); NVD DB cached at `~/.m2/repository/org/owasp/dependency-check-data`, keyed on the ISO week so version bumps don't force a cold fetch. **`NVD_API_KEY` strongly recommended** (without it the NVD fetch fails on cold cache); **`OSS_INDEX_USER`/`OSS_INDEX_TOKEN`** enable OSS Index (else it's silently disabled) |
 | `release` | push to master OR `v*` tag | Downloads the JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release` |
-| `docker` | `v*` tag only | Build image for scan → Trivy CRITICAL/HIGH image scan → `make image-smoke-test` → `make e2e` (LDAP bind + search) → log in to GHCR (`${{ github.actor }}` + auto-provisioned `GITHUB_TOKEN`; job has `packages: write`) → push single-arch `linux/amd64` image to `ghcr.io/<owner>/ldap-server/apacheds-ad` with `flavor: latest=true`. Every gate blocks the push |
+| `docker` | `v*` tag only | Build image for scan → Trivy CRITICAL/HIGH image scan → `make image-smoke-test` → `make e2e` (LDAP bind + search) → log in to GHCR (`${{ github.actor }}` + auto-provisioned `GITHUB_TOKEN`; job has `packages: write`) → push single-arch `linux/amd64` image to `ghcr.io/<owner>/ldap-server/apacheds-ad` with `flavor: latest=true` → **cosign keyless-sign the pushed digest (OIDC, `id-token: write`) + attach an SPDX SBOM attestation**. Every gate blocks the push |
 | `ci-pass` | always | `if: always() && contains(needs.*.result, 'failure')` — single aggregator for branch protection |
 
 Every action is SHA-pinned (verified via `gh api …/git/refs/tags`). A separate [`cleanup-runs.yml`](.github/workflows/cleanup-runs.yml) prunes old workflow runs and caches from deleted branches weekly via the native `gh` CLI.
+
+### Verifying image signatures
+
+Every tagged image (since `v1.2.2`) is signed with [cosign](https://docs.sigstore.dev/) keyless OIDC and carries an SPDX SBOM attestation. Verify a pull before trusting it:
+
+```bash
+cosign verify ghcr.io/andriykalashnykov/ldap-server/apacheds-ad:latest \
+  --certificate-identity-regexp 'https://github.com/AndriyKalashnykov/ldap-server/.github/workflows/build-test-push.yml@refs/tags/v.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# inspect the SBOM attestation
+cosign verify-attestation --type spdxjson \
+  --certificate-identity-regexp 'https://github.com/AndriyKalashnykov/ldap-server/.github/workflows/build-test-push.yml@refs/tags/v.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/andriykalashnykov/ldap-server/apacheds-ad:latest
+```
+
+The `--certificate-identity-regexp` binds the signature to this repo's workflow; `--certificate-oidc-issuer` confirms it was minted by GitHub Actions OIDC (not a leaked key). Both are required.
 
 ### Required secrets
 

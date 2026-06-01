@@ -231,6 +231,7 @@ jobs:
     permissions:
       contents: read
       packages: write          # required to publish to ghcr.io via GITHUB_TOKEN
+      id-token: write          # cosign keyless OIDC signing (Sigstore/Fulcio + Rekor)
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -300,6 +301,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        id: push
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
@@ -308,10 +310,45 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # provenance/sbom stay false ON THE IMAGE INDEX so the GHCR "OS/Arch"
+          # tab renders (in-manifest attestations add unknown/unknown entries).
+          # Supply-chain metadata is attached as separate cosign signature +
+          # SBOM attestation artifacts below — they don't pollute the index.
           provenance: false
           sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # ---- Supply-chain: cosign keyless OIDC signature + SBOM attestation,
+      # both bound to the immutable pushed digest. Stored as separate
+      # `.sig` / `.att` OCI artifacts (NOT in the image index), so the
+      # GHCR OS/Arch tab stays clean. Verify locally:
+      #   cosign verify ghcr.io/<owner>/<repo>/apacheds-ad:<tag> \
+      #     --certificate-identity-regexp 'https://github.com/<owner>/<repo>/.github/workflows/build-test-push.yml@refs/tags/v.*' \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - name: Lowercase image ref
+        id: img
+        run: echo "ref=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/apacheds-ad" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign image (keyless OIDC)
+        env:
+          REF: ${{ steps.img.outputs.ref }}@${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$REF"
+
+      - name: Generate SBOM (SPDX JSON)
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ steps.img.outputs.ref }}@${{ steps.push.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Attest SBOM (keyless OIDC)
+        env:
+          REF: ${{ steps.img.outputs.ref }}@${{ steps.push.outputs.digest }}
+        run: cosign attest --yes --predicate sbom.spdx.json --type spdxjson "$REF"
 
   # Single branch-protection check that aggregates the per-job results.
   # Treats `skipped` as pass (doc-only PRs, master pushes that don't fire
