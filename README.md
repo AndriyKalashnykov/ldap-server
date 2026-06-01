@@ -135,24 +135,23 @@ Pre-built images are published to [GHCR](https://ghcr.io) on every `v*` git tag:
 docker pull ghcr.io/andriykalashnykov/ldap-server/apacheds-ad:latest
 ```
 
-The default entrypoint imports every `*.ldif` under `/ldap/ldif/`, which is an **empty mount point** in the image — so a plain `docker run` with no mount starts with **no directory entries**. Two ways to seed data, both using this repo's own example tree:
-
-**1. Bundled example data (no mount).** The JAR bundles [`src/main/resources/ldap-example.ldif`](src/main/resources/ldap-example.ldif) (`dc=ldap,dc=example` with `uid=jduke` / `theduke` + an `Admin` group). Override the entrypoint to run with no LDIF argument, which falls back to that bundled default:
+The image ships **pre-seeded**: [`ldap-example.ldif`](src/main/resources/ldap-example.ldif) is baked into `/ldap/ldif/` (`dc=ldap,dc=example` with `uid=jduke` / `theduke` + an `Admin` group), so a bare `docker run` starts with the example tree:
 
 ```bash
-docker run -it --rm -p 10389:10389 --entrypoint java \
-  ghcr.io/andriykalashnykov/ldap-server/apacheds-ad:latest \
-  -jar /ldap/ldap-server.jar -b 0.0.0.0 -p 10389
+docker run -it --rm -p 10389:10389 \
+  ghcr.io/andriykalashnykov/ldap-server/apacheds-ad:latest
 # bind: uid=jduke,ou=Users,dc=ldap,dc=example / theduke
 ```
 
-**2. Mount a directory of `.ldif` files.** Every `*.ldif` inside is imported (non-`.ldif` files are ignored). Mount this repo's `src/main/resources/` to seed the same example tree, or point at your own directory:
+To seed your own entries, bind-mount a directory of `.ldif` files over `/ldap/ldif/` — this **replaces** the baked-in seed; every `*.ldif` inside is imported (non-`.ldif` files ignored). For example, mount this repo's `src/main/resources/` (same tree), or point at your own directory:
 
 ```bash
 docker run -it --rm -p 10389:10389 \
   -v "$PWD/src/main/resources:/ldap/ldif:ro" \
   ghcr.io/andriykalashnykov/ldap-server/apacheds-ad:latest
 ```
+
+(Mounting an *empty* directory shadows the baked-in seed and starts the server with no entries.)
 
 **Connecting.** The directory's built-in administrator exists regardless of how data is seeded:
 

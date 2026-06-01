@@ -76,7 +76,7 @@ make image-run           # interactive run with $(LDIF_DIR) bind-mounted into /l
 make e2e                 # boot image + run AuthenticateWithSearch (LDAP bind + uid search + re-bind)
 ```
 
-The runtime image's CMD references `/ldap/ldif/` — mount any directory containing `.ldif` files there to seed entries. Empty mount = server starts with no entries (matches legacy behavior; does NOT fall back to bundled defaults when an empty-but-present `--ldifs` arg is supplied). **The `e2e` target overrides the entrypoint** (`--entrypoint java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT}` with no LDIF arg) so the server loads the bundled `ldap-example.ldif` defaults — that's the only way `AuthenticateWithSearch jduke theduke` can find an entry to bind against without a host-side mount.
+The runtime image ships **pre-seeded**: the Dockerfile `COPY`s `src/main/resources/ldap-example.ldif` into `/ldap/ldif/`, so a bare `docker run` (default CMD `… /ldap/ldif/`) starts with the example tree (`uid=jduke`/`theduke` + Admin group). Bind-mounting a directory over `/ldap/ldif/` **replaces** the baked-in seed — every `.ldif` inside is imported; mounting an *empty* directory shadows the seed and starts with no entries (the server does NOT fall back to bundled defaults on an empty-but-present directory arg). **The `e2e` target overrides the entrypoint** (`--entrypoint java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT}` with no LDIF arg) so the server loads the JAR-bundled `ldap-example.ldif` — equivalent data, exercising the no-arg path. (Both the baked `/ldap/ldif/` seed and the JAR-bundled default come from the same `src/main/resources/ldap-example.ldif`.)
 
 ## CI (`.github/workflows/build-test-push.yml`)
 
