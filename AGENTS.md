@@ -21,7 +21,7 @@ JDK 25 LTS + Maven 3.9.x, both pinned in [`.mise.toml`](.mise.toml). `make deps`
 - Run the built jar: `java -jar target/ldap-server.jar [options] [LDIFs...]` — see `--help` for the full CLI (includes `--admin-password`, `--ssl-*`, `--allow-anonymous`).
 - CVE scan: `make cve-check` (OWASP dependency-check; ~2 GB NVD cold start, `NVD_API_KEY` strongly recommended).
 
-`pom.xml` sets `maven.compiler.source=25` (matches the `eclipse-temurin:25-jre` runtime). AM27 ships bytecode 52 (Java 8) but the consumer can target whatever runtime it deploys on. Dependency bumps are handled by **Renovate** — there is **no Maven Central publishing** in this fork (the upstream `release` profile with GPG signing, `nexus-staging-maven-plugin`, and the `[1.8,1.9)` Java enforcer was removed; re-add from upstream only if Central publishing is ever wanted).
+`pom.xml` sets `maven.compiler.source=25` (matches the `eclipse-temurin:25-jre-alpine` runtime). AM27 ships bytecode 52 (Java 8) but the consumer can target whatever runtime it deploys on. Dependency bumps are handled by **Renovate** — there is **no Maven Central publishing** in this fork (the upstream `release` profile with GPG signing, `nexus-staging-maven-plugin`, and the `[1.8,1.9)` Java enforcer was removed; re-add from upstream only if Central publishing is ever wanted).
 
 ## Architecture
 
