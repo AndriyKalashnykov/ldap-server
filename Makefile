@@ -45,7 +45,7 @@ MERMAID_CLI_VERSION ?= 11.15.0
 help:
 	@echo "Usage: make COMMAND"
 	@echo "Commands :"
-	@grep -E '[a-zA-Z\.\-]+:.*?@ .*$$' $(MAKEFILE_LIST) | tr -d '#' | awk 'BEGIN {FS = ":.*?@ "}; {printf "\033[32m%-22s\033[0m - %s\n", $$1, $$2}'
+	@grep -E '[a-zA-Z\.\-]+:.*?@ .*$$' $(MAKEFILE_LIST) | tr -d '#' | awk 'BEGIN {FS = ":.*?@ "}; {printf "\033[32m%-24s\033[0m - %s\n", $$1, $$2}'
 
 #deps: @ Install Java + Maven via mise (reads .mise.toml)
 deps:
@@ -193,24 +193,25 @@ cve-check: deps
 clean:
 	@mvn -B clean -q
 
-#image-build: @ Build the Docker image as $(IMAGE_REF) (multi-stage, from src/)
-image-build:
+#require-docker: @ Fail fast if the Docker CLI is not on PATH (shared guard for image/e2e targets)
+require-docker:
 	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+
+#image-build: @ Build the Docker image as $(IMAGE_REF) (multi-stage, from src/)
+image-build: require-docker
 	@DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-arg APP_INTERNAL_PORT=$(APP_INTERNAL_PORT) \
 		-t "$(IMAGE_REF)" .
 
 #image-run: @ Run the image, mounting $(LDIF_DIR) into /ldap/ldif/
-image-run:
-	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+image-run: require-docker
 	@docker run -it --rm \
 		-v "$$PWD/$(LDIF_DIR):/ldap/ldif/" \
 		-p "$(LDAP_PORT):$(APP_INTERNAL_PORT)" \
 		"$(IMAGE_REF)"
 
 #image-smoke-test: @ Boot the image and wait for its HEALTHCHECK to report healthy
-image-smoke-test:
-	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+image-smoke-test: require-docker
 	@set -eu; \
 	CONTAINER=ldap-server-smoke; \
 	docker rm -f "$$CONTAINER" >/dev/null 2>&1 || true; \
@@ -241,8 +242,7 @@ image-smoke-test:
 # both the server and the client test tool; we invoke `--entrypoint java` to
 # override the server CMD and run the client class instead. Both containers
 # attach to a temp network so the client can dial the server by container name.
-e2e:
-	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+e2e: require-docker
 	@set -eu; \
 	NET=ldap-server-e2e-net; \
 	SERVER=ldap-server-e2e; \
@@ -271,8 +271,7 @@ e2e:
 	echo "PASS: end-to-end LDAP bind + search against $$SERVER"
 
 #docker-login: @ Log into $(DOCKER_REGISTRY) using DOCKER_LOGIN + $$DOCKER_PWD (from env or .env)
-docker-login:
-	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+docker-login: require-docker
 	@[ -n "$(DOCKER_LOGIN)" ] || { echo "Error: DOCKER_LOGIN must be set in env or .env."; exit 1; }
 	@[ -n "$${DOCKER_PWD:-}" ] || { echo "Error: DOCKER_PWD must be set in the environment (NEVER on the command line)."; exit 1; }
 	@printf '%s' "$$DOCKER_PWD" | docker login "$(DOCKER_REGISTRY)" --username "$(DOCKER_LOGIN)" --password-stdin
@@ -290,9 +289,8 @@ ci: deps check-java-alignment check-maven-alignment lint test package
 # `release` job needs a real GitHub Releases API context and the `docker` job
 # needs GHCR auth + a tag ref — neither is reachable under `act`.
 # For tag-only paths, validate via a real push or `gh workflow run`.
-ci-run:
+ci-run: require-docker
 	@command -v act >/dev/null 2>&1 || { echo "Error: act required. Install via https://github.com/nektos/act"; exit 1; }
-	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
 	@docker container prune -f >/dev/null 2>&1 || true
 	@ACT_PORT=$$(shuf -i 40000-59999 -n 1); \
 	ARTIFACT_PATH=$$(mktemp -d -t act-artifacts.XXXXXX); \
@@ -318,5 +316,5 @@ renovate-validate:
 
 .PHONY: help deps deps-check check-java-alignment check-maven-alignment \
 	build test package run-jar lint mermaid-lint cve-check clean \
-	image-build image-run image-smoke-test e2e docker-login image-push \
+	require-docker image-build image-run image-smoke-test e2e docker-login image-push \
 	ci ci-run renovate-validate
