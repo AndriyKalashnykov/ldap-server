@@ -170,9 +170,12 @@
         </dependency>
 
         <dependency>
-            <groupId>com.beust</groupId>
+            <!-- JCommander moved groupId com.beust → org.jcommander at 2.0;
+                 com.beust:jcommander is frozen at 1.82 (2022). The Java package
+                 stays com.beust.jcommander, so imports are unchanged. -->
+            <groupId>org.jcommander</groupId>
             <artifactId>jcommander</artifactId>
-            <version>1.82</version>
+            <version>3.0</version>
         </dependency>
 
         <dependency>
