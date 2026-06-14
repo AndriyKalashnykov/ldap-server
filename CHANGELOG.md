@@ -9,6 +9,23 @@ The fork inherits the upstream Java code from
 fork-owned changes (Docker pipeline, Makefile, hardened CI, Renovate config,
 and dependency / source migrations driven by the fork) are recorded below.
 
+## [1.2.5] — 2026-06-14
+
+### Changed
+
+- **CI publishes immutable per-version GitHub Releases instead of a rolling
+  `latest`.** The `release` job previously overwrote a single `latest`-tagged
+  release on every `master` push and tag — its asset was mutable (which had
+  broken a downstream consumer's SHA256 pin, forcing an ad-hoc immutable
+  `2026-06-04` release), the `latest` git tag went stale relative to the
+  rebuilt asset, and `v*` tags got no release or notes. The job now runs
+  **only on `v*` tag pushes**, publishes a release keyed on the pushed tag
+  (`tag_name: ${{ github.ref_name }}`) with auto-generated notes, and lets
+  GitHub flag the newest semver as "Latest" (`make_latest`). The per-version
+  asset URL (`releases/download/<tag>/ldap-server.jar`) is stable, so
+  consumers pin a version + SHA directly. The rolling `latest` release + its
+  mutable git tag were removed.
+
 ## [1.2.4] — 2026-06-14
 
 ### Changed
