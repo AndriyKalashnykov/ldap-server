@@ -26,7 +26,7 @@ C4Context
 | Language | Java 25 LTS (source + bytecode target 25; matches `eclipse-temurin:25-jre-alpine` runtime) |
 | LDAP engine | Apache Directory Server 2.0.0.AM27 |
 | Build | Maven 3.9.16 + `maven-shade-plugin` 3.6.2 (single runnable JAR) |
-| CLI parser | JCommander 1.82 (`IUsageFormatter`-based) |
+| CLI parser | JCommander 3.0 (`org.jcommander` coordinate; `IUsageFormatter`-based) |
 | Logging | SLF4J 2.0.18 + `slf4j-simple` (ServiceLoader binding) |
 | Tests | JUnit 5 Jupiter 6.1.0 via `junit-bom` (9 tests, all passing — incl. StartTLS over TLSv1.3 and anonymous bind) |
 | Container | Multi-stage Dockerfile: `maven:3.9-eclipse-temurin-25` → `eclipse-temurin:25-jre-alpine` (both `@sha256:`-digest-pinned), non-root UID 10001, TCP HEALTHCHECK |

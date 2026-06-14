@@ -9,6 +9,21 @@ The fork inherits the upstream Java code from
 fork-owned changes (Docker pipeline, Makefile, hardened CI, Renovate config,
 and dependency / source migrations driven by the fork) are recorded below.
 
+## [Unreleased]
+
+### Changed
+
+- **JCommander migrated to the maintained `org.jcommander` coordinate.** The
+  CLI parser was pinned to `com.beust:jcommander:1.82`, a coordinate frozen
+  since 2022 (Renovate's `maven` manager reported it "current" because nothing
+  newer exists under that groupId — a coordinate-rename blind spot). JCommander
+  moved its groupId to `org.jcommander` at 2.0; bumped to
+  `org.jcommander:jcommander:3.0`. The Java package stays `com.beust.jcommander`,
+  so no import changes — only the `<groupId>`/`<version>` in `pom.xml`. All 9
+  tests (which exercise CLI parsing via `ExtCommander`) pass unchanged; the
+  `ExtUsageFormatter` override of `DefaultUsageFormatter.usage(StringBuilder, String)`
+  (non-final in 3.0) and the non-`final` `@Parameter` fields remain compatible.
+
 ## [1.2.2] — 2026-06-01
 
 Image-delivery enhancements + supply-chain signing. The shaded JAR is
