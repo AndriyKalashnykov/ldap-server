@@ -122,9 +122,12 @@ run-jar: package
 	if [ -n "$(LDAPS_PORT)" ]; then args+=(-sp "$(LDAPS_PORT)"); fi; \
 	java -jar "$(JAR_PATH)" "$${args[@]}" "$(LDIF_DIR)"
 
-#lint: @ Validate pom.xml + shell-script executable-bit guard
+#lint: @ Validate pom.xml + Dockerfile (hadolint) + shell-script executable-bit guard
 lint: deps mermaid-lint
 	@mvn -B validate
+	@# hadolint (pinned in .mise.toml, installed by `make deps`) lints the
+	@# Dockerfile; intentional ignores live in .hadolint.yaml.
+	@hadolint Dockerfile
 	@# Safety check rule #8: any committed shell script must be +x or CI fails with exit 126.
 	@NONEXEC=$$(find . -maxdepth 3 -name '*.sh' -not -executable -not -path './target/*' -not -path './.git/*' 2>/dev/null); \
 	if [ -n "$$NONEXEC" ]; then \
@@ -292,11 +295,21 @@ ci: deps check-java-alignment check-maven-alignment lint test package
 ci-run: require-docker
 	@command -v act >/dev/null 2>&1 || { echo "Error: act required. Install via https://github.com/nektos/act"; exit 1; }
 	@docker container prune -f >/dev/null 2>&1 || true
-	@ACT_PORT=$$(shuf -i 40000-59999 -n 1); \
+	@# The build job runs `make ci` -> `mise install`, which now resolves an
+	@# aqua tool (hadolint) via the GitHub API. Forward GITHUB_TOKEN (env-only
+	@# `--secret KEY`, never `=value` — Safety rule #9) so the aqua lookup is
+	@# authenticated under act and doesn't hit the unauthenticated 60-req/hr cap
+	@# on a cold runner cache. Auto-derived from the gh CLI when unset.
+	@if [ -z "$${GITHUB_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then \
+		export GITHUB_TOKEN="$$(gh auth token 2>/dev/null)"; \
+	fi; \
+	ACT_PORT=$$(shuf -i 40000-59999 -n 1); \
 	ARTIFACT_PATH=$$(mktemp -d -t act-artifacts.XXXXXX); \
+	secret_args=(); [ -n "$${GITHUB_TOKEN:-}" ] && secret_args+=(--secret GITHUB_TOKEN); \
 	act push --container-architecture linux/amd64 --pull=false \
 		--artifact-server-port "$$ACT_PORT" \
-		--artifact-server-path "$$ARTIFACT_PATH"
+		--artifact-server-path "$$ARTIFACT_PATH" \
+		"$${secret_args[@]}"
 
 #renovate-validate: @ Validate renovate.json against the live Renovate schema (npx --yes renovate@latest)
 # `renovate@latest` (NOT bare `renovate`) avoids the npx-cache stale-binary
