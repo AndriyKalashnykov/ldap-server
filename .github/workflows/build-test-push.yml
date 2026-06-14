@@ -388,6 +388,16 @@ jobs:
           image: ${{ steps.img.outputs.ref }}@${{ steps.push.outputs.digest }}
           format: spdx-json
           output-file: sbom.spdx.json
+          # The SBOM is attached via `cosign attest` to the IMAGE (next step),
+          # NOT as a GitHub Release asset. anchore/sbom-action defaults
+          # upload-release-assets:true, which — now that per-version releases
+          # (v1.2.5+) create a release MATCHING the pushed tag — tries to upload
+          # the SBOM as a release asset and fails with "Resource not accessible
+          # by integration" (the docker job has contents:read, not write).
+          # Disable it: keeps the job's permissions minimal and the SBOM stays
+          # an image attestation only. (Pre-v1.2.5 this never fired because the
+          # release was tagged `latest`, not the version tag.)
+          upload-release-assets: false
 
       - name: Attest SBOM (keyless OIDC)
         env:
