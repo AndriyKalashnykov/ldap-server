@@ -9,7 +9,7 @@ The fork inherits the upstream Java code from
 fork-owned changes (Docker pipeline, Makefile, hardened CI, Renovate config,
 and dependency / source migrations driven by the fork) are recorded below.
 
-## [Unreleased]
+## [1.2.4] — 2026-06-14
 
 ### Changed
 
@@ -23,6 +23,37 @@ and dependency / source migrations driven by the fork) are recorded below.
   tests (which exercise CLI parsing via `ExtCommander`) pass unchanged; the
   `ExtUsageFormatter` override of `DefaultUsageFormatter.usage(StringBuilder, String)`
   (non-final in 3.0) and the non-`final` `@Parameter` fields remain compatible.
+
+## [1.2.3] — 2026-06-14
+
+Security fix + CI/build hardening. The shaded JAR gains a CVE override; the
+rest is pipeline and test-coverage hardening.
+
+### Fixed
+
+- **CVE-2026-35563** — override the Apache Directory LDAP API to `2.1.8` (above
+  AM27's transitive `2.1.5`) via an `api-parent` BOM import ordered before
+  `apacheds-parent` (first-import-wins), plus a CPE-false-positive suppression
+  for the AM27 server modules.
+
+### Added
+
+- `AnonymousBindTest` — covers the `--allow-anonymous` (`-a`) flag (9 tests total).
+- `make e2e` wrong-password negative case (rejection asserted alongside the
+  positive bind+search).
+- Dedicated cheap `mermaid-lint` CI job validating the README C4 hero diagram on
+  doc-only changes (so a README-only edit, which skips `build`, still gets the
+  diagram validated).
+- `hadolint` Dockerfile lint in `make lint` (pinned in `.mise.toml`, `.hadolint.yaml`).
+
+### Changed
+
+- `maven-compiler-plugin` `failOnWarning=true` (warnings-as-errors).
+- Dockerfile runtime stage runs `apk --no-cache upgrade` to clear base-image OS
+  CVEs at build time (real fix, not a `.trivyignore` waiver).
+- Pin `jdx/mise-action`'s mise binary to `2026.6.6` to dodge mise's
+  tag-before-asset-publish race; `require-docker` Make guard consolidates the
+  per-target docker checks.
 
 ## [1.2.2] — 2026-06-01
 
