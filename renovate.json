@@ -33,7 +33,7 @@
       "customType": "regex",
       "managerFilePatterns": ["/^Makefile$/"],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)(?: registryUrl=(?<registryUrl>[^\\s]+))?(?: versioning=(?<versioning>[^\\s]+))?\\s+[A-Z_]+\\s*\\??=\\s*(?<currentValue>[^\\s]+)"
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)(?: registryUrl=(?<registryUrl>[^\\s]+))?(?: versioning=(?<versioning>[^\\s]+))?\\s+[A-Z0-9_]+\\s*[?:]?=\\s*(?<currentValue>[^\\s]+)"
       ],
       "datasourceTemplate": "{{{datasource}}}"
     }
@@ -48,6 +48,12 @@
       "description": "Group all GitHub Actions bumps into one PR. helpers:pinGitHubActionDigests (inherited from config:best-practices) carries the `# vX.Y.Z` comment alongside the SHA so reviewers see what changed.",
       "matchManagers": ["github-actions"],
       "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Hold mise aqua-tool bumps (e.g. hadolint) for a 3-day stability buffer. Renovate's mise manager resolves aqua: backends via the github-tags datasource, which sees a tag the moment it's pushed — but `mise install` downloads the GitHub *release* asset, which can publish hours-to-days later (trivy/k9s/carvel have all done this). Without the buffer a bump PR's CI 404s in the mise install step. Scoped to github-tags so it doesn't touch the java/maven core-backend pins.",
+      "matchManagers": ["mise"],
+      "matchDatasources": ["github-tags"],
+      "minimumReleaseAge": "3 days"
     },
     {
       "description": "Group ApacheDS bumps — the server, core-annotations, protocol-ldap, and api-ldap-codec-standalone are released in lockstep upstream and must move together to avoid runtime ClassNotFoundException at boot.",
