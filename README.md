@@ -277,6 +277,15 @@ cosign verify-attestation --type spdxjson \
 
 The `--certificate-identity-regexp` binds the signature to this repo's workflow; `--certificate-oidc-issuer` confirms it was minted by GitHub Actions OIDC (not a leaked key). Both are required.
 
+> For reproducible verification, resolve and verify the immutable digest rather than the mutable `:latest` tag — `latest` is re-pointed on every tagged release:
+>
+> ```bash
+> DIGEST=$(crane digest ghcr.io/andriykalashnykov/ldap-server/apacheds-ad:latest)
+> cosign verify "ghcr.io/andriykalashnykov/ldap-server/apacheds-ad@${DIGEST}" \
+>   --certificate-identity-regexp 'https://github.com/AndriyKalashnykov/ldap-server/.github/workflows/build-test-push.yml@refs/tags/v.*' \
+>   --certificate-oidc-issuer https://token.actions.githubusercontent.com
+> ```
+
 ### Required secrets
 
 Configure under **Settings → Secrets and variables → Actions**.
