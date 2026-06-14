@@ -29,6 +29,7 @@ jobs:
       pull-requests: read       # required by dorny/paths-filter on PR events
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
@@ -40,6 +41,12 @@ jobs:
             code:
               - '!(**.md|docs/**|specs/**|LICENSE|.gitignore|.claudeignore|.claude/**|benchmarks/**|**.png|**.jpg|**.gif|**.svg)'
               - 'CLAUDE.md'
+            # README carries the C4 mermaid hero diagram, validated by
+            # `make mermaid-lint`. It's `**.md` (docs-classified, so it skips
+            # `build`) — this `docs` output drives a cheap mermaid-only job
+            # (below) so a README-only edit still gets its diagram validated.
+            docs:
+              - 'README.md'
 
   # Single composite Maven job. The Makefile's `make ci` chains
   # deps -> lint -> test -> package, so splitting into separate
@@ -61,6 +68,17 @@ jobs:
 
       - uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925 # v4.1.0
         with:
+          # Pin mise's own binary (mise-action defaults to auto-latest). mise
+          # publishes a release TAG before its release ASSETS finish uploading,
+          # so auto-latest can resolve to a version whose linux-x64.tar.zst 404s
+          # for minutes-to-hours — failing the mise install step on every CI run
+          # (PR and master alike) in that window, regardless of repo changes.
+          # 2026.6.6 is the last release whose linux-x64 asset is verified live.
+          # NOT Renovate-tracked: the github-releases datasource surfaces a tag
+          # the instant its release object exists (assets may still be missing),
+          # so auto-bumping could re-propose the 404ing version. Bump by hand
+          # when `gh api repos/jdx/mise/releases/tags/v<X>` shows the asset.
+          version: 2026.6.6
           install: true
           cache: true
 
@@ -103,6 +121,26 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  # README-only changes skip `build` (docs-classified), so `make ci`'s
+  # mermaid-lint never runs on them — a broken C4 hero diagram could merge and
+  # break the github.com render. This cheap job (docker + minlag/mermaid-cli,
+  # no Maven/mise) validates the diagram on README-only edits. It runs ONLY
+  # when `build` is skipped (code != 'true'); code-changing pushes/PRs and tag
+  # pushes validate the diagram via build's `make ci`, so this job stays idle
+  # there (skipped → ci-pass treats it as pass).
+  mermaid-lint:
+    needs: [changes]
+    if: |
+      !failure() && !cancelled() &&
+      needs.changes.outputs.code != 'true' &&
+      needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Validate README mermaid diagram
+        run: make mermaid-lint
+
   # OWASP dependency-check — Maven plugin invoked via fully-qualified
   # coordinate. Heavy job (~5 min warm, ~30 min cold for the NVD download),
   # so gated to tag pushes + weekly schedule + manual dispatch. The
@@ -123,6 +161,10 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925 # v4.1.0
         with:
+          # Pin mise's own binary — see the build job for the full rationale
+          # (mise tag-before-asset-publish race). Bump in lockstep with the
+          # build job, by hand, when a newer mise's asset is verified live.
+          version: 2026.6.6
           install: true
           cache: true
       - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -355,7 +397,7 @@ jobs:
   # docker, etc.) and only fails on `failure` or `cancelled`.
   ci-pass:
     if: always()
-    needs: [changes, build, cve-check, release, docker]
+    needs: [changes, mermaid-lint, build, cve-check, release, docker]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

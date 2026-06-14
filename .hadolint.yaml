@@ -1,0 +1,12 @@
+# hadolint config — https://github.com/hadolint/hadolint
+#
+# Run via `make lint` (hadolint is pinned in .mise.toml as
+# aqua:hadolint/hadolint and installed by `make deps`).
+ignored:
+  # DL3025: "Use arguments JSON notation for CMD and ENTRYPOINT arguments."
+  # Intentional shell-form CMD: the runtime entrypoint is
+  #   java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT} /ldap/ldif/
+  # and JSON-array (exec) form does NOT expand ${APP_INTERNAL_PORT}, so the
+  # `docker run -e APP_INTERNAL_PORT=...` override (and the ARG/ENV default)
+  # would be lost. Shell form is required here for env-var expansion.
+  - DL3025

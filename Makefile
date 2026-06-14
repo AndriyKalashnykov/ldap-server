@@ -45,7 +45,7 @@ MERMAID_CLI_VERSION ?= 11.15.0
 help:
 	@echo "Usage: make COMMAND"
 	@echo "Commands :"
-	@grep -E '[a-zA-Z\.\-]+:.*?@ .*$$' $(MAKEFILE_LIST) | tr -d '#' | awk 'BEGIN {FS = ":.*?@ "}; {printf "\033[32m%-22s\033[0m - %s\n", $$1, $$2}'
+	@grep -E '[a-zA-Z\.\-]+:.*?@ .*$$' $(MAKEFILE_LIST) | tr -d '#' | awk 'BEGIN {FS = ":.*?@ "}; {printf "\033[32m%-24s\033[0m - %s\n", $$1, $$2}'
 
 #deps: @ Install Java + Maven via mise (reads .mise.toml)
 deps:
@@ -122,9 +122,12 @@ run-jar: package
 	if [ -n "$(LDAPS_PORT)" ]; then args+=(-sp "$(LDAPS_PORT)"); fi; \
 	java -jar "$(JAR_PATH)" "$${args[@]}" "$(LDIF_DIR)"
 
-#lint: @ Validate pom.xml + shell-script executable-bit guard
+#lint: @ Validate pom.xml + Dockerfile (hadolint) + shell-script executable-bit guard
 lint: deps mermaid-lint
 	@mvn -B validate
+	@# hadolint (pinned in .mise.toml, installed by `make deps`) lints the
+	@# Dockerfile; intentional ignores live in .hadolint.yaml.
+	@hadolint Dockerfile
 	@# Safety check rule #8: any committed shell script must be +x or CI fails with exit 126.
 	@NONEXEC=$$(find . -maxdepth 3 -name '*.sh' -not -executable -not -path './target/*' -not -path './.git/*' 2>/dev/null); \
 	if [ -n "$$NONEXEC" ]; then \
@@ -193,24 +196,25 @@ cve-check: deps
 clean:
 	@mvn -B clean -q
 
-#image-build: @ Build the Docker image as $(IMAGE_REF) (multi-stage, from src/)
-image-build:
+#require-docker: @ Fail fast if the Docker CLI is not on PATH (shared guard for image/e2e targets)
+require-docker:
 	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+
+#image-build: @ Build the Docker image as $(IMAGE_REF) (multi-stage, from src/)
+image-build: require-docker
 	@DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-arg APP_INTERNAL_PORT=$(APP_INTERNAL_PORT) \
 		-t "$(IMAGE_REF)" .
 
 #image-run: @ Run the image, mounting $(LDIF_DIR) into /ldap/ldif/
-image-run:
-	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+image-run: require-docker
 	@docker run -it --rm \
 		-v "$$PWD/$(LDIF_DIR):/ldap/ldif/" \
 		-p "$(LDAP_PORT):$(APP_INTERNAL_PORT)" \
 		"$(IMAGE_REF)"
 
 #image-smoke-test: @ Boot the image and wait for its HEALTHCHECK to report healthy
-image-smoke-test:
-	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+image-smoke-test: require-docker
 	@set -eu; \
 	CONTAINER=ldap-server-smoke; \
 	docker rm -f "$$CONTAINER" >/dev/null 2>&1 || true; \
@@ -241,8 +245,7 @@ image-smoke-test:
 # both the server and the client test tool; we invoke `--entrypoint java` to
 # override the server CMD and run the client class instead. Both containers
 # attach to a temp network so the client can dial the server by container name.
-e2e:
-	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+e2e: require-docker
 	@set -eu; \
 	NET=ldap-server-e2e-net; \
 	SERVER=ldap-server-e2e; \
@@ -263,16 +266,22 @@ e2e:
 		sleep 2; \
 	done; \
 	[ "$$status" = "healthy" ] || { echo "FAIL: $$SERVER not healthy within 90s"; docker logs "$$SERVER" 2>&1 | tail -30; exit 1; }; \
-	echo "Running AuthenticateWithSearch against $$SERVER..."; \
+	echo "Running AuthenticateWithSearch against $$SERVER (correct password)..."; \
 	docker run --rm --network="$$NET" --entrypoint java "$(IMAGE_REF)" \
 		-cp /ldap/ldap-server.jar com.github.kwart.ldap.AuthenticateWithSearch \
 		"ldap://$$SERVER:$(APP_INTERNAL_PORT)" jduke theduke \
 		|| { echo "FAIL: AuthenticateWithSearch did not bind + search successfully"; docker logs "$$SERVER" 2>&1 | tail -30; exit 1; }; \
-	echo "PASS: end-to-end LDAP bind + search against $$SERVER"
+	echo "PASS: end-to-end LDAP bind + search against $$SERVER"; \
+	echo "Running AuthenticateWithSearch against $$SERVER (WRONG password — expect rejection)..."; \
+	if docker run --rm --network="$$NET" --entrypoint java "$(IMAGE_REF)" \
+		-cp /ldap/ldap-server.jar com.github.kwart.ldap.AuthenticateWithSearch \
+		"ldap://$$SERVER:$(APP_INTERNAL_PORT)" jduke wrong-password >/dev/null 2>&1; then \
+		echo "FAIL: AuthenticateWithSearch unexpectedly SUCCEEDED with a wrong password"; docker logs "$$SERVER" 2>&1 | tail -30; exit 1; \
+	fi; \
+	echo "PASS: wrong-password bind correctly rejected (negative case)"
 
 #docker-login: @ Log into $(DOCKER_REGISTRY) using DOCKER_LOGIN + $$DOCKER_PWD (from env or .env)
-docker-login:
-	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
+docker-login: require-docker
 	@[ -n "$(DOCKER_LOGIN)" ] || { echo "Error: DOCKER_LOGIN must be set in env or .env."; exit 1; }
 	@[ -n "$${DOCKER_PWD:-}" ] || { echo "Error: DOCKER_PWD must be set in the environment (NEVER on the command line)."; exit 1; }
 	@printf '%s' "$$DOCKER_PWD" | docker login "$(DOCKER_REGISTRY)" --username "$(DOCKER_LOGIN)" --password-stdin
@@ -290,15 +299,24 @@ ci: deps check-java-alignment check-maven-alignment lint test package
 # `release` job needs a real GitHub Releases API context and the `docker` job
 # needs GHCR auth + a tag ref — neither is reachable under `act`.
 # For tag-only paths, validate via a real push or `gh workflow run`.
-ci-run:
+ci-run: require-docker
 	@command -v act >/dev/null 2>&1 || { echo "Error: act required. Install via https://github.com/nektos/act"; exit 1; }
-	@command -v docker >/dev/null 2>&1 || { echo "Error: docker required."; exit 1; }
 	@docker container prune -f >/dev/null 2>&1 || true
-	@ACT_PORT=$$(shuf -i 40000-59999 -n 1); \
+	@# The build job runs `make ci` -> `mise install`, which now resolves an
+	@# aqua tool (hadolint) via the GitHub API. Forward GITHUB_TOKEN (env-only
+	@# `--secret KEY`, never `=value` — Safety rule #9) so the aqua lookup is
+	@# authenticated under act and doesn't hit the unauthenticated 60-req/hr cap
+	@# on a cold runner cache. Auto-derived from the gh CLI when unset.
+	@if [ -z "$${GITHUB_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then \
+		export GITHUB_TOKEN="$$(gh auth token 2>/dev/null)"; \
+	fi; \
+	ACT_PORT=$$(shuf -i 40000-59999 -n 1); \
 	ARTIFACT_PATH=$$(mktemp -d -t act-artifacts.XXXXXX); \
+	secret_args=(); [ -n "$${GITHUB_TOKEN:-}" ] && secret_args+=(--secret GITHUB_TOKEN); \
 	act push --container-architecture linux/amd64 --pull=false \
 		--artifact-server-port "$$ACT_PORT" \
-		--artifact-server-path "$$ARTIFACT_PATH"
+		--artifact-server-path "$$ARTIFACT_PATH" \
+		"$${secret_args[@]}"
 
 #renovate-validate: @ Validate renovate.json against the live Renovate schema (npx --yes renovate@latest)
 # `renovate@latest` (NOT bare `renovate`) avoids the npx-cache stale-binary
@@ -318,5 +336,5 @@ renovate-validate:
 
 .PHONY: help deps deps-check check-java-alignment check-maven-alignment \
 	build test package run-jar lint mermaid-lint cve-check clean \
-	image-build image-run image-smoke-test e2e docker-login image-push \
+	require-docker image-build image-run image-smoke-test e2e docker-login image-push \
 	ci ci-run renovate-validate

@@ -28,7 +28,7 @@ C4Context
 | Build | Maven 3.9.16 + `maven-shade-plugin` 3.6.2 (single runnable JAR) |
 | CLI parser | JCommander 1.82 (`IUsageFormatter`-based) |
 | Logging | SLF4J 2.0.18 + `slf4j-simple` (ServiceLoader binding) |
-| Tests | JUnit 5 Jupiter 6.1.0 via `junit-bom` (8 tests, all passing — incl. StartTLS over TLSv1.3) |
+| Tests | JUnit 5 Jupiter 6.1.0 via `junit-bom` (9 tests, all passing — incl. StartTLS over TLSv1.3 and anonymous bind) |
 | Container | Multi-stage Dockerfile: `maven:3.9-eclipse-temurin-25` → `eclipse-temurin:25-jre-alpine` (both `@sha256:`-digest-pinned), non-root UID 10001, TCP HEALTHCHECK |
 | Version manager | [mise](https://mise.jdx.dev/) (`.mise.toml` pins Java 25 LTS + Maven 3.9.16) |
 | Dep management | Renovate (Maven + GitHub Actions + Dockerfile + `.mise.toml`) |
@@ -66,7 +66,7 @@ ldapsearch -x -H ldap://127.0.0.1:10389 -D 'uid=admin,ou=system' -w secret \
 | [Git](https://git-scm.com/) | any | Source control |
 | [mise](https://mise.jdx.dev/) | latest | Pins Java + Maven from [`.mise.toml`](.mise.toml); `make deps` installs it on first run |
 | [JDK (Temurin)](https://adoptium.net/) | 25 LTS | Auto-installed by `mise install` |
-| [Maven](https://maven.apache.org/) | 3.9.11 | Auto-installed by `mise install` |
+| [Maven](https://maven.apache.org/) | 3.9.16 | Auto-installed by `mise install` |
 | [Docker](https://www.docker.com/) | 20.10+ | Optional — required only for `make image-build` / `make image-smoke-test` |
 
 `make deps` bootstraps mise (no root required, installs to `~/.local/bin`), then runs `mise install` which reads `.mise.toml` and provisions the pinned Java + Maven. Run `make deps-check` afterward to verify the toolchain is on PATH.
@@ -196,7 +196,7 @@ Run `make help` to see every target with its description.
 | `make test` | Run JUnit tests |
 | `make package` | Build the shaded runnable JAR at `target/ldap-server.jar` |
 | `make run-jar` | Run the packaged JAR with the bundled LDIF |
-| `make lint` | Validate `pom.xml` + shell-script executable-bit guard + `mermaid-lint` |
+| `make lint` | Validate `pom.xml` + lint the Dockerfile (`hadolint`) + shell-script executable-bit guard + `mermaid-lint` |
 | `make mermaid-lint` | Validate README Mermaid diagrams via `minlag/mermaid-cli` (skipped under act) |
 | `make cve-check` | OWASP dependency-check (transitive deps; ~2 GB NVD download on first run) |
 | `make clean` | Remove Maven build artifacts |
@@ -208,7 +208,7 @@ Run `make help` to see every target with its description.
 | `make image-build` | Multi-stage build from `src/`, tagged as `$(IMAGE_REF)` |
 | `make image-run` | Run the image with `$(LDIF_DIR)` bind-mounted into `/ldap/ldif/` |
 | `make image-smoke-test` | Boot the image and wait for its HEALTHCHECK to report healthy |
-| `make e2e` | End-to-end: boot image + verify LDAP bind + search via the protocol |
+| `make e2e` | End-to-end: boot image + verify LDAP bind + search (correct password) AND that a wrong password is rejected (negative case) |
 | `make docker-login` | Log into `$(DOCKER_REGISTRY)` using `DOCKER_LOGIN` + `$$DOCKER_PWD` (stdin-only) |
 | `make image-push` | Push `$(IMAGE_REF)` to `$(DOCKER_REGISTRY)` |
 
@@ -223,7 +223,7 @@ Run `make help` to see every target with its description.
 
 | Target | Description |
 |--------|-------------|
-| `make renovate-validate` | Validate `renovate.json` against the live Renovate config schema (`npx renovate-config-validator`) |
+| `make renovate-validate` | Validate `renovate.json` against the live Renovate schema (`npx --yes renovate@latest --platform=local`) |
 
 ## Configuration
 
@@ -249,7 +249,8 @@ GitHub Actions runs on every push to `master`, every `v*` git tag, every pull re
 
 | Job | Triggers | Purpose |
 |-----|----------|---------|
-| `changes` | every event | [`dorny/paths-filter`](https://github.com/dorny/paths-filter) — doc-only PRs skip every job below |
+| `changes` | every event | [`dorny/paths-filter`](https://github.com/dorny/paths-filter) — doc-only PRs skip every job below; also emits a `docs` output (README) that drives `mermaid-lint` |
+| `mermaid-lint` | README-only changes | Cheap docker + `minlag/mermaid-cli` validation of the README C4 hero diagram (no Maven/mise). README is `**.md` so a README-only edit skips `build`; this job validates the diagram on those edits. Idle (skipped) on code/tag events, where `build`'s `make ci` validates it |
 | `build` | code-changing events + every tag | Provisions Java 25 + Maven 3.9.16 via `jdx/mise-action`, restores `~/.m2` from `actions/cache`, runs `make ci` (alignment guards + lint + test + package), Trivy filesystem scan (informational), uploads `target/ldap-server.jar` as an artifact |
 | `cve-check` | tag pushes + weekly cron + dispatch | OWASP dependency-check via `mvn org.owasp:dependency-check-maven:check` (NVD + Sonatype OSS Index analyzers); NVD DB cached at `~/.m2/repository/org/owasp/dependency-check-data`, keyed on the ISO week so version bumps don't force a cold fetch. **`NVD_API_KEY` strongly recommended** (without it the NVD fetch fails on cold cache); **`OSS_INDEX_USER`/`OSS_INDEX_TOKEN`** enable OSS Index (else it's silently disabled) |
 | `release` | push to master OR `v*` tag | Downloads the JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release` |

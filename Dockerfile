@@ -46,6 +46,15 @@ LABEL maintainer="AndriyKalashnykov@gmail.com" \
       org.opencontainers.image.source="https://github.com/AndriyKalashnykov/ldap-server" \
       org.opencontainers.image.description="In-memory LDAP server based on ApacheDS"
 
+# Pull baked-in Alpine OS packages (libcrypto3/libssl3, busybox, zlib, ...) up
+# to the latest in the pinned branch at BUILD time, so a CVE Alpine has already
+# fixed clears the blocking Trivy image gate immediately instead of waiting on
+# the upstream eclipse-temurin base rebuild. Run as root, before USER.
+# `--no-cache` leaves no apk index behind. This is a real fix (the vulnerable
+# package is removed), not a `.trivyignore` waiver. The base FROM stays
+# digest-pinned for reproducibility of everything else.
+RUN apk --no-cache upgrade
+
 # Non-root user. Alpine ships busybox `addgroup`/`adduser`; -S = system,
 # -D = no password, -H = no home. /sbin/nologin denies interactive shells.
 RUN addgroup -S -g ${APP_GID} ldap \
