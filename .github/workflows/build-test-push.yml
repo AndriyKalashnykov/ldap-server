@@ -68,6 +68,17 @@ jobs:
 
       - uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925 # v4.1.0
         with:
+          # Pin mise's own binary (mise-action defaults to auto-latest). mise
+          # publishes a release TAG before its release ASSETS finish uploading,
+          # so auto-latest can resolve to a version whose linux-x64.tar.zst 404s
+          # for minutes-to-hours — failing the mise install step on every CI run
+          # (PR and master alike) in that window, regardless of repo changes.
+          # 2026.6.6 is the last release whose linux-x64 asset is verified live.
+          # NOT Renovate-tracked: the github-releases datasource surfaces a tag
+          # the instant its release object exists (assets may still be missing),
+          # so auto-bumping could re-propose the 404ing version. Bump by hand
+          # when `gh api repos/jdx/mise/releases/tags/v<X>` shows the asset.
+          version: 2026.6.6
           install: true
           cache: true
 
@@ -150,6 +161,10 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925 # v4.1.0
         with:
+          # Pin mise's own binary — see the build job for the full rationale
+          # (mise tag-before-asset-publish race). Bump in lockstep with the
+          # build job, by hand, when a newer mise's asset is verified live.
+          version: 2026.6.6
           install: true
           cache: true
       - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
