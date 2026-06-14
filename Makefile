@@ -266,12 +266,19 @@ e2e: require-docker
 		sleep 2; \
 	done; \
 	[ "$$status" = "healthy" ] || { echo "FAIL: $$SERVER not healthy within 90s"; docker logs "$$SERVER" 2>&1 | tail -30; exit 1; }; \
-	echo "Running AuthenticateWithSearch against $$SERVER..."; \
+	echo "Running AuthenticateWithSearch against $$SERVER (correct password)..."; \
 	docker run --rm --network="$$NET" --entrypoint java "$(IMAGE_REF)" \
 		-cp /ldap/ldap-server.jar com.github.kwart.ldap.AuthenticateWithSearch \
 		"ldap://$$SERVER:$(APP_INTERNAL_PORT)" jduke theduke \
 		|| { echo "FAIL: AuthenticateWithSearch did not bind + search successfully"; docker logs "$$SERVER" 2>&1 | tail -30; exit 1; }; \
-	echo "PASS: end-to-end LDAP bind + search against $$SERVER"
+	echo "PASS: end-to-end LDAP bind + search against $$SERVER"; \
+	echo "Running AuthenticateWithSearch against $$SERVER (WRONG password — expect rejection)..."; \
+	if docker run --rm --network="$$NET" --entrypoint java "$(IMAGE_REF)" \
+		-cp /ldap/ldap-server.jar com.github.kwart.ldap.AuthenticateWithSearch \
+		"ldap://$$SERVER:$(APP_INTERNAL_PORT)" jduke wrong-password >/dev/null 2>&1; then \
+		echo "FAIL: AuthenticateWithSearch unexpectedly SUCCEEDED with a wrong password"; docker logs "$$SERVER" 2>&1 | tail -30; exit 1; \
+	fi; \
+	echo "PASS: wrong-password bind correctly rejected (negative case)"
 
 #docker-login: @ Log into $(DOCKER_REGISTRY) using DOCKER_LOGIN + $$DOCKER_PWD (from env or .env)
 docker-login: require-docker

@@ -29,7 +29,7 @@ java -jar ./target/ldap-server.jar --help            # full CLI flag list (inclu
 
 ### Tests
 
-JUnit 5 Jupiter suite (`org.junit:junit-bom:6.1.0`) under `src/test/java/com/github/kwart/ldap/` — **8 tests, all passing on AM27**:
+JUnit 5 Jupiter suite (`org.junit:junit-bom:6.1.0`) under `src/test/java/com/github/kwart/ldap/` — **9 tests, all passing on AM27**:
 
 | Class | Notes |
 |---|---|
@@ -37,6 +37,7 @@ JUnit 5 Jupiter suite (`org.junit:junit-bom:6.1.0`) under `src/test/java/com/git
 | `LdapServer2Test` | 1 test — multi-entry LDIF with `changetype: modify` |
 | `CustomPasswordTest` | 2 tests — `--admin-password` flag |
 | `StartTlsTest` | 1 test — pins `TLSv1.3` + `TLS_AES_128_GCM_SHA256`; passes on AM27's MINA TLS stack (the `@Disabled` was removed in the AM27 migration commit). |
+| `AnonymousBindTest` | 1 test — covers the `--allow-anonymous` (-a) flag / `setAllowAnonymousAccess`: an anonymous bind (`SECURITY_AUTHENTICATION=none`) searches the bundled tree and finds `uid=jduke`. Fork-added (additive file; doesn't touch upstream test classes). |
 
 `make test` runs everything. Surefire's built-in JUnit 5 support handles the BOM; no `junit-platform-launcher` dependency needed.
 
@@ -74,7 +75,7 @@ Multi-stage Dockerfile, builds from source — does NOT download a released JAR.
 make image-build         # multi-stage build from src/ (uses DOCKER_LOGIN/IMAGE_NAME/IMAGE_TAG env)
 make image-smoke-test    # boot the container, poll docker inspect until Health.Status == "healthy" (90s timeout)
 make image-run           # interactive run with $(LDIF_DIR) bind-mounted into /ldap/ldif/
-make e2e                 # boot image + run AuthenticateWithSearch (LDAP bind + uid search + re-bind)
+make e2e                 # boot image + AuthenticateWithSearch: correct-password bind+search (PASS) AND wrong-password rejection (negative case)
 ```
 
 The runtime image ships **pre-seeded**: the Dockerfile `COPY`s `src/main/resources/ldap-example.ldif` into `/ldap/ldif/`, so a bare `docker run` (default CMD `… /ldap/ldif/`) starts with the example tree (`uid=jduke`/`theduke` + Admin group). Bind-mounting a directory over `/ldap/ldif/` **replaces** the baked-in seed — every `.ldif` inside is imported; mounting an *empty* directory shadows the seed and starts with no entries (the server does NOT fall back to bundled defaults on an empty-but-present directory arg). **The `e2e` target overrides the entrypoint** (`--entrypoint java -jar /ldap/ldap-server.jar -b 0.0.0.0 -p ${APP_INTERNAL_PORT}` with no LDIF arg) so the server loads the JAR-bundled `ldap-example.ldif` — equivalent data, exercising the no-arg path. (Both the baked `/ldap/ldif/` seed and the JAR-bundled default come from the same `src/main/resources/ldap-example.ldif`.)
