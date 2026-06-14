@@ -13,6 +13,9 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <version.org.apache.ds>2.0.0.AM27</version.org.apache.ds>
+        <!-- CVE override: pins the Apache Directory LDAP API above AM27's
+             transitive 2.1.5 (see api-parent BOM import note below). -->
+        <version.org.apache.directory.api>2.1.8</version.org.apache.directory.api>
         <version.junit>6.1.0</version.junit>
         <!-- CVE override: AM27 pulls bc*-jdk15on 1.70 transitively (CVE-2024-29857
              7.5, CVE-2024-34447 7.7). The jdk15on line ended at 1.70; the fix is
@@ -112,6 +115,21 @@
                 <groupId>org.junit</groupId>
                 <artifactId>junit-bom</artifactId>
                 <version>${version.junit}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+            <!-- CVE override: AM27's apacheds-parent manages the Apache Directory
+                 LDAP API at 2.1.5 (CVE-2026-35563, 8.8 — the LDAP *client* TLS
+                 layer does not verify the server certificate's hostname, enabling
+                 MITM; fixed in 2.1.8, released 2026-05-31). Importing api-parent
+                 2.1.8 BEFORE apacheds-parent overrides all 16 api-* modules to the
+                 fixed line (earlier BOM import wins). Patch bump within the 2.1.x
+                 minor — binary-compatible with AM27. Removable (revert to AM27's
+                 transitive) once ApacheDS ships a release on api >= 2.1.8. -->
+            <dependency>
+                <groupId>org.apache.directory.api</groupId>
+                <artifactId>api-parent</artifactId>
+                <version>${version.org.apache.directory.api}</version>
                 <scope>import</scope>
                 <type>pom</type>
             </dependency>

@@ -25,4 +25,20 @@
         <packageUrl regex="true">^pkg:maven/org\.apache\.directory\.server/.*@2\.0\.0\.AM27$</packageUrl>
         <cve>CVE-2010-1151</cve>
     </suppress>
+    <suppress>
+        <notes><![CDATA[
+            False positive. CVE-2026-35563 (8.8) is a flaw in the Apache Directory
+            *LDAP API* client (cpe:apache:directory_ldap_api) — the TLS layer did
+            not verify the server certificate's hostname; fixed in api 2.1.8. The
+            real api-* dependency is pinned to the fixed 2.1.8 in pom.xml, but
+            dependency-check additionally CPE-matches the ApacheDS *server* modules
+            (org.apache.directory.server:*@2.0.0.AM27 — e.g. apacheds-interceptors-
+            admin) to the directory_ldap_api CPE at version 2.0.0.am27. Those server
+            interceptor/core modules are not the vulnerable LDAP-client TLS code and
+            do not ship a fixed AM-line release. Pinned to 2.0.0.AM27; re-evaluate
+            (delete or re-range) when bumping ApacheDS past AM27.
+        ]]></notes>
+        <packageUrl regex="true">^pkg:maven/org\.apache\.directory\.server/.*@2\.0\.0\.AM27$</packageUrl>
+        <cve>CVE-2026-35563</cve>
+    </suppress>
 </suppressions>
