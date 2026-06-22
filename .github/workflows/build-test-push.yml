@@ -190,8 +190,15 @@ jobs:
         # the Sonatype OSS Index analyzer — token auth is now mandatory, so
         # without them that analyzer is silently disabled (warning only) and
         # coverage drops to NVD-only. All three are routed through
-        # ~/.m2/settings.xml server-ids by the Makefile recipe (printf + umask
+        # ~/.m2/settings.xml server-ids by scripts/cve-check.sh (printf + umask
         # 077); no value ever enters argv.
+        #
+        # scripts/cve-check.sh degrades gracefully on a transient NVD outage:
+        # a failed NVD *update* (e.g. HTTP 503) re-scans against the cached NVD
+        # DB this job just restored (-DautoUpdate=false, still blocking on
+        # CVSS>=7) and emits a ::warning:: instead of reddening the build, while
+        # a real CVE finding still fails. (The weekly cron red-failed on an NVD
+        # 503 on 2026-06-22; this is the durable fix.)
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
           OSS_INDEX_USER: ${{ secrets.OSS_INDEX_USER }}

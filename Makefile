@@ -134,6 +134,9 @@ lint: deps mermaid-lint
 		echo "Error: shell scripts missing +x bit:"; echo "$$NONEXEC" | sed 's/^/  /'; \
 		exit 1; \
 	fi
+	@# Contract: the cve-check NVD-outage failure classifier must keep matching
+	@# the real-world log shapes. Goes RED if either signature regex is broken.
+	@./scripts/cve-check.sh --self-test
 
 #mermaid-lint: @ Validate Mermaid diagrams in markdown via minlag/mermaid-cli
 mermaid-lint:
@@ -162,35 +165,21 @@ mermaid-lint:
 	[ "$$FAILED" -eq 0 ] || { echo "mermaid-lint: $$FAILED file(s) failed"; exit 1; }
 
 #cve-check: @ OWASP dependency-check (Maven + transitive deps)
-# Uses the fully-qualified `org.owasp:dependency-check-maven:check` coordinate
-# so the version pinned in pom.xml `<pluginManagement>` is the only source of
-# truth (no Makefile/CLI version literal to drift). Cold start downloads
-# ~2GB NVD DB (~30-45 min). Cached runs take 2-5 min.
-#
-# Optional NVD_API_KEY for higher NVD rate limit — routed through
-# ~/.m2/settings.xml (via printf, a bash builtin) so the value never appears
-# in argv. NEVER pass `-DnvdApiKey=$$NVD_API_KEY` directly — leaks via
-# `ps -ef` / `/proc/<pid>/cmdline` for the entire ~30 min plugin lifetime.
+# Delegated to scripts/cve-check.sh, which:
+#   * uses the fully-qualified `org.owasp:dependency-check-maven:check` coordinate
+#     so the version pinned in pom.xml `<pluginManagement>` is the only source of
+#     truth (no Makefile/CLI version literal to drift);
+#   * writes NVD_API_KEY / OSS_INDEX_USER / OSS_INDEX_TOKEN into ~/.m2/settings.xml
+#     (umask 077, printf builtin) and references them by server id — NEVER argv
+#     (a value in argv leaks via `ps -ef` / /proc/<pid>/cmdline for the plugin's
+#     whole lifetime);
+#   * degrades gracefully on a transient NVD-API outage (HTTP 503): a failed NVD
+#     *update* re-scans against the cached NVD DB (-DautoUpdate=false, still
+#     blocking on CVSS>=7) with a warning, instead of reddening the build — while
+#     a real CVE finding still fails. See the script header for the full rationale.
+# Cold start downloads ~2GB NVD DB (~30-45 min); cached runs take 2-5 min.
 cve-check: deps
-	@mkdir -p "$$HOME/.m2"
-	@servers=""; mvn_args=""; \
-	if [ -n "$${NVD_API_KEY:-}" ]; then \
-		servers="$$servers<server><id>nvd</id><password>$${NVD_API_KEY}</password></server>"; \
-		mvn_args="-DnvdApiServerId=nvd"; \
-	else \
-		echo "Note: NVD_API_KEY not set — NVD lookups will be rate-limited."; \
-	fi; \
-	if [ -n "$${OSS_INDEX_USER:-}" ] && [ -n "$${OSS_INDEX_TOKEN:-}" ]; then \
-		servers="$$servers<server><id>ossindex</id><username>$${OSS_INDEX_USER}</username><password>$${OSS_INDEX_TOKEN}</password></server>"; \
-		mvn_args="$$mvn_args -DossIndexServerId=ossindex"; \
-	else \
-		echo "Note: OSS_INDEX_USER/OSS_INDEX_TOKEN not set — Sonatype OSS Index analyzer disabled (token auth is now mandatory)."; \
-	fi; \
-	( umask 077 && printf '<settings><servers>%s</servers></settings>\n' "$$servers" > "$$HOME/.m2/settings.xml" ); \
-	mvn -B org.owasp:dependency-check-maven:check $$mvn_args
-	@# Secrets are written ONLY into ~/.m2/settings.xml (umask 077) and passed
-	@# to the plugin by server id (-DnvdApiServerId / -DossIndexServerId); no
-	@# secret value ever appears in argv. `$$VAR` defers expansion to the shell.
+	@./scripts/cve-check.sh
 
 #clean: @ Remove Maven build artifacts
 clean:
