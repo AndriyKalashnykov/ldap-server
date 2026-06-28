@@ -16,7 +16,7 @@
         <!-- CVE override: pins the Apache Directory LDAP API above AM27's
              transitive 2.1.5 (see api-parent BOM import note below). -->
         <version.org.apache.directory.api>2.1.8</version.org.apache.directory.api>
-        <version.junit>6.1.0</version.junit>
+        <version.junit>6.1.1</version.junit>
         <!-- CVE override: AM27 pulls bc*-jdk15on 1.70 transitively (CVE-2024-29857
              7.5, CVE-2024-34447 7.7). The jdk15on line ended at 1.70; the fix is
              only in the renamed jdk18on line, so we exclude the jdk15on artifacts
