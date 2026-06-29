@@ -39,7 +39,7 @@ APP_INTERNAL_PORT  ?= 10389
 # Mermaid CLI image for `mermaid-lint` (validates README C4 diagram). Renovate-
 # tracked via the customManager regex in renovate.json.
 # renovate: datasource=docker depName=minlag/mermaid-cli
-MERMAID_CLI_VERSION ?= 11.15.0
+MERMAID_CLI_VERSION ?= 11.16.0
 
 #help: @ List available tasks
 help:
