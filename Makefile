@@ -36,10 +36,20 @@ BIND_ADDRESS       ?= 0.0.0.0
 #   make image-build APP_INTERNAL_PORT=10399
 APP_INTERNAL_PORT  ?= 10389
 
-# Mermaid CLI image for `mermaid-lint` (validates README C4 diagram). Renovate-
-# tracked via the customManager regex in renovate.json.
-# renovate: datasource=docker depName=minlag/mermaid-cli
-MERMAID_CLI_VERSION ?= 11.16.0
+# PlantUML renderer image for `make diagrams` (renders the README C4 hero from
+# docs/diagrams/*.puml). Deliberately NOT Renovate-tracked: this repo automerges
+# on green CI, and a renderer bump the bot cannot re-render would fail the
+# `diagrams-check` drift gate and sit as a permanently-RED automerge PR. Bump by
+# hand, then `make diagrams` and commit the re-rendered PNG.
+PLANTUML_VERSION   ?= 1.2024.8
+
+DIAGRAM_DIR   := docs/diagrams
+DIAGRAM_SRC   := $(wildcard $(DIAGRAM_DIR)/*.puml)
+DIAGRAM_OUT   := $(patsubst $(DIAGRAM_DIR)/%.puml,$(DIAGRAM_DIR)/out/%.png,$(DIAGRAM_SRC))
+# Version-stamped sentinel: its NAME encodes PLANTUML_VERSION, so a renderer
+# bump invalidates this prereq and forces a full re-render — the drift gate
+# alone can't catch "renderer bumped but PNG not regenerated". Gitignored.
+DIAGRAM_STAMP := $(DIAGRAM_DIR)/out/.plantuml-$(PLANTUML_VERSION).stamp
 
 #help: @ List available tasks
 help:
@@ -122,8 +132,8 @@ run-jar: package
 	if [ -n "$(LDAPS_PORT)" ]; then args+=(-sp "$(LDAPS_PORT)"); fi; \
 	java -jar "$(JAR_PATH)" "$${args[@]}" "$(LDIF_DIR)"
 
-#lint: @ Validate pom.xml + Dockerfile (hadolint) + shell-script executable-bit guard
-lint: deps mermaid-lint
+#lint: @ Validate pom.xml + Dockerfile (hadolint) + shell-script executable-bit guard + diagram drift
+lint: deps diagrams-check
 	@mvn -B validate
 	@# hadolint (pinned in .mise.toml, installed by `make deps`) lints the
 	@# Dockerfile; intentional ignores live in .hadolint.yaml.
@@ -138,31 +148,54 @@ lint: deps mermaid-lint
 	@# the real-world log shapes. Goes RED if either signature regex is broken.
 	@./scripts/cve-check.sh --self-test
 
-#mermaid-lint: @ Validate Mermaid diagrams in markdown via minlag/mermaid-cli
-mermaid-lint:
-	@if [ -n "$${ACT:-}" ]; then echo "mermaid-lint: skipped under act (docker-in-docker bind-mount path mismatch); runs on real CI."; exit 0; fi
-	@command -v docker >/dev/null 2>&1 || { echo "ERROR: docker is required for mermaid-lint"; exit 1; }
-	@set -euo pipefail; \
-	MD_FILES=$$(grep -lF '```mermaid' README.md CLAUDE.md AGENTS.md 2>/dev/null || true); \
-	if [ -z "$$MD_FILES" ]; then echo "No Mermaid blocks found — skipping."; exit 0; fi; \
-	IMAGE=minlag/mermaid-cli:$(MERMAID_CLI_VERSION); \
-	for attempt in 1 2 3; do \
-		if docker pull --quiet "$$IMAGE" >/dev/null 2>&1; then break; fi; \
-		if [ "$$attempt" -eq 3 ]; then echo "ERROR: docker pull $$IMAGE failed after 3 attempts"; exit 1; fi; \
-		delay=$$((attempt * 5)); echo "  ! docker pull failed (attempt $$attempt/3); retrying in $${delay}s..."; sleep "$$delay"; \
-	done; \
-	FAILED=0; \
-	for md in $$MD_FILES; do \
-		echo "Validating Mermaid blocks in $$md..."; \
-		LOG=$$(mktemp); \
-		if docker run --rm -v "$$PWD:/data:ro" "$$IMAGE" -i "/data/$$md" -o "/tmp/$$(basename $$md .md).svg" >"$$LOG" 2>&1; then \
-			echo "  ✓ All blocks rendered cleanly."; \
-		else \
-			echo "  ✗ Parse error in $$md:"; sed 's/^/    /' "$$LOG"; FAILED=$$((FAILED + 1)); \
-		fi; \
-		rm -f "$$LOG"; \
-	done; \
-	[ "$$FAILED" -eq 0 ] || { echo "mermaid-lint: $$FAILED file(s) failed"; exit 1; }
+#diagrams: @ Render PlantUML C4 diagrams (docs/diagrams/*.puml) to committed PNGs
+diagrams: $(DIAGRAM_OUT)
+
+# Per-file render: only re-renders a PNG whose .puml (or the version stamp) changed.
+# --user keeps output host-owned; HOME/_JAVA_OPTIONS avoid the user.home='?'
+# font-cache footgun when the container UID has no /etc/passwd entry.
+$(DIAGRAM_DIR)/out/%.png: $(DIAGRAM_DIR)/%.puml $(DIAGRAM_STAMP)
+	@command -v docker >/dev/null 2>&1 || { echo "ERROR: docker is required for make diagrams"; exit 1; }
+	docker run --rm -v "$(CURDIR)/$(DIAGRAM_DIR):/work" -w /work \
+		--user $$(id -u):$$(id -g) \
+		-e HOME=/tmp -e _JAVA_OPTIONS=-Duser.home=/tmp \
+		plantuml/plantuml:$(PLANTUML_VERSION) \
+		-tpng -o out $(notdir $<)
+
+# The stamp's NAME encodes PLANTUML_VERSION; a bump makes the old stamp stop
+# satisfying the prereq, so the render rule re-fires for every diagram.
+$(DIAGRAM_STAMP):
+	@mkdir -p $(DIAGRAM_DIR)/out
+	@rm -f $(DIAGRAM_DIR)/out/.plantuml-*.stamp
+	@touch $@
+
+#diagrams-clean: @ Remove rendered diagram artefacts
+diagrams-clean:
+	rm -rf $(DIAGRAM_DIR)/out
+
+#diagrams-check: @ Verify committed diagrams match current source (CI drift gate)
+diagrams-check:
+	@if [ -n "$${ACT:-}" ]; then echo "diagrams-check: skipped under act (docker-in-docker bind-mount path mismatch); runs on real CI."; exit 0; fi
+	@$(MAKE) --no-print-directory diagrams
+	@# Two-part gate. A bare `git diff --exit-code` misses UNTRACKED output (a new
+	@# .puml whose rendered PNG was never `git add`ed passes green) — so we also
+	@# check `git ls-files --others`. But `git status --porcelain` over-fires: it
+	@# flags a legitimately STAGED-but-uncommitted render as dirty, which false-REDs
+	@# the normal edit→render→add→`make ci`→commit flow (this gate runs inside the
+	@# local `make ci`, not just CI). This decomposition avoids both:
+	@#   (1) re-render MODIFIED a tracked PNG        -> stale committed output
+	@#   (2) UNTRACKED output left behind            -> rendered-but-not-added
+	@# A staged render that matches the fresh output is invisible to both -> passes.
+	@if ! git diff --exit-code -- $(DIAGRAM_DIR)/out >/dev/null 2>&1; then \
+		echo "ERROR: Committed diagram PNG is stale — re-render changed it. Run 'make diagrams' and commit."; \
+		git --no-pager diff --stat -- $(DIAGRAM_DIR)/out; exit 1; \
+	fi
+	@UNTRACKED=$$(git ls-files --others --exclude-standard -- $(DIAGRAM_DIR)/out); \
+	if [ -n "$$UNTRACKED" ]; then \
+		echo "ERROR: Rendered diagram output is not committed/staged. Run 'make diagrams' and 'git add':"; \
+		echo "$$UNTRACKED" | sed 's/^/  /'; exit 1; \
+	fi
+	@echo "diagrams-check: rendered output matches committed source."
 
 #cve-check: @ OWASP dependency-check (Maven + transitive deps)
 # Delegated to scripts/cve-check.sh, which:
@@ -324,6 +357,6 @@ renovate-validate:
 		npx --yes renovate@latest --platform=local
 
 .PHONY: help deps deps-check check-java-alignment check-maven-alignment \
-	build test package run-jar lint mermaid-lint cve-check clean \
+	build test package run-jar lint diagrams diagrams-clean diagrams-check cve-check clean \
 	require-docker image-build image-run image-smoke-test e2e docker-login image-push \
 	ci ci-run renovate-validate
