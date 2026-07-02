@@ -6,7 +6,7 @@
 # The official Maven + Temurin 25 image — mvn + JDK in one layer.
 # Renovate-tracked via the `dockerfile` manager; digest pin keeps the
 # build reproducible across registry-tag retags.
-FROM maven:3.9-eclipse-temurin-25@sha256:01ef98a139ed64622c086bac54d1e167453d0f2ff68b69d00978f26d8736215c AS build
+FROM maven:3.9-eclipse-temurin-25@sha256:7e461cec477077c1d9e50b13df8aef9018764410f4c4cd7c34803f10c4c99e4c AS build
 
 WORKDIR /workspace
 
