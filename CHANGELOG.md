@@ -9,6 +9,25 @@ The fork inherits the upstream Java code from
 fork-owned changes (Docker pipeline, Makefile, hardened CI, Renovate config,
 and dependency / source migrations driven by the fork) are recorded below.
 
+## [Unreleased]
+
+### Changed
+
+- **README C4 hero diagram migrated from Mermaid `C4Context` to C4-PlantUML.**
+  Mermaid's `C4*` family renders no legend, ships unthemeable washed-out colours,
+  and offers no size control — so the hero is now a committed PNG rendered from
+  [`docs/diagrams/c4-context.puml`](docs/diagrams/c4-context.puml) via the pinned
+  `plantuml/plantuml` image, with the modern-flat theme, `LAYOUT_LEFT_RIGHT()`,
+  and `SHOW_LEGEND()`. `make mermaid-lint` (+ its dedicated README-only CI job and
+  the `minlag/mermaid-cli` pin) was replaced by `make diagrams` / `make diagrams-check`;
+  the drift gate is wired into `make lint` (→ `make ci`) and the CI `changes`
+  paths-filter re-includes `docs/diagrams/**/*.puml` + `out/**` as `code` so a
+  diagram-source edit still runs `build`. `PLANTUML_VERSION` and the C4-PlantUML
+  `!include` tag are deliberately **not** Renovate-tracked (a bump the bot cannot
+  re-render would fail `diagrams-check` under this repo's `automerge: true` and sit
+  RED forever) — both are bumped by hand with a `make diagrams` re-render. The
+  now-dead Makefile `custom.regex` customManager was removed from `renovate.json`.
+
 ## [1.2.5] — 2026-06-14
 
 ### Changed

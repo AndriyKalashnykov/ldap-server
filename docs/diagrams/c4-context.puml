@@ -1,0 +1,34 @@
+@startuml c4-context
+' C4-PlantUML pinned to a tagged release for reproducible renders.
+' NOT Renovate-tracked: under this repo's `automerge: true`, a bump PR the bot
+' cannot re-render would fail `make diagrams-check` and sit RED forever (see
+' CLAUDE.md "Architecture diagram"). Bump this tag by hand + `make diagrams`.
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/v2.11.0/C4_Context.puml
+
+LAYOUT_LEFT_RIGHT()
+
+' Modern-flat styling: no shadows, sharp corners, clean sans-serif, teal/violet.
+skinparam backgroundColor #FAFAFA
+skinparam shadowing false
+skinparam roundCorner 4
+skinparam defaultFontName "Inter, Helvetica, Arial, sans-serif"
+skinparam defaultFontSize 13
+skinparam ArrowColor #37474F
+skinparam ArrowThickness 1.2
+skinparam rectangleBorderThickness 1.3
+
+UpdateElementStyle("person",     $fontColor="#FFFFFF", $bgColor="#0F766E", $borderColor="#134E4A")
+UpdateElementStyle("system",     $fontColor="#FFFFFF", $bgColor="#2563EB", $borderColor="#1E3A8A")
+UpdateElementStyle("external_system", $fontColor="#FFFFFF", $bgColor="#7C3AED", $borderColor="#4C1D95")
+
+title System Context — ldap-server (in-memory LDAP directory for tests, SSO mocks & dev)
+
+Person(client, "App / test / CI client", "Binds and searches over LDAP")
+System(srv, "ldap-server", "Apache Directory Server 2.0.0.AM27, in-memory (Java 25); LDAP :10389 plus optional LDAPS / StartTLS; ships as one Maven-shaded JAR or a non-root Docker image on GHCR")
+System_Ext(ldif, "LDIF seed", "Bundled ldap-example.ldif or a mounted .ldif directory, imported at boot")
+
+Rel(client, srv, "bind + search", "LDAP / LDAPS")
+Rel(ldif, srv, "seeds entries at startup")
+
+SHOW_LEGEND()
+@enduml

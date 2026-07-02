@@ -8,8 +8,7 @@
     "maven",
     "github-actions",
     "dockerfile",
-    "mise",
-    "custom.regex"
+    "mise"
   ],
   "commitMessagePrefix": "chore(all): ",
   "commitMessageAction": "update",
@@ -27,17 +26,6 @@
     "automerge": true,
     "minimumReleaseAge": "0 days"
   },
-  "customManagers": [
-    {
-      "description": "Track `# renovate: datasource=… depName=…`-annotated *_VERSION pins in the Makefile (e.g. MERMAID_CLI_VERSION).",
-      "customType": "regex",
-      "managerFilePatterns": ["/^Makefile$/"],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)(?: registryUrl=(?<registryUrl>[^\\s]+))?(?: versioning=(?<versioning>[^\\s]+))?\\s+[A-Z0-9_]+\\s*[?:]?=\\s*(?<currentValue>[^\\s]+)"
-      ],
-      "datasourceTemplate": "{{{datasource}}}"
-    }
-  ],
   "packageRules": [
     {
       "description": "Wait 3 days before automerging major updates so the wider community has a chance to surface regressions",

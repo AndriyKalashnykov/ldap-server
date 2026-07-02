@@ -9,15 +9,9 @@ Single-JAR, in-memory LDAP server wrapping [Apache Directory Server](https://dir
 
 > This is a fork of [intoolswetrust/ldap-server](https://github.com/intoolswetrust/ldap-server) — every Java change lives upstream; the fork adds the Docker pipeline, Makefile, hardened CI, and Renovate. Java package `com.github.kwart.ldap` is intentionally kept aligned with upstream so future syncs stay clean diffs.
 
-```mermaid
-C4Context
-    title ldap-server — in-memory LDAP directory for tests, SSO mocks & dev
-    Person(client, "App / test / CI client", "Binds and searches over LDAP")
-    System(srv, "ldap-server", "ApacheDS 2.0.0.AM27, in-memory; LDAP :10389 plus optional LDAPS / StartTLS; ships as one shaded JAR or a non-root Docker image")
-    System_Ext(ldif, "LDIF seed", "Bundled ldap-example.ldif or a mounted .ldif directory, imported at boot")
-    Rel(client, srv, "bind + search", "LDAP / LDAPS")
-    Rel(ldif, srv, "seeds entries at startup")
-```
+<p align="center"><img src="docs/diagrams/out/c4-context.png" alt="System Context — an app / test / CI client binds and searches over LDAP/LDAPS against the in-memory ldap-server, which is seeded from a bundled or mounted LDIF file at boot" width="700"></p>
+
+<p align="center"><em>System context (C4). Source: <a href="docs/diagrams/c4-context.puml"><code>docs/diagrams/c4-context.puml</code></a> — regenerate with <code>make diagrams</code>.</em></p>
 
 ## Tech Stack
 
@@ -196,8 +190,9 @@ Run `make help` to see every target with its description.
 | `make test` | Run JUnit tests |
 | `make package` | Build the shaded runnable JAR at `target/ldap-server.jar` |
 | `make run-jar` | Run the packaged JAR with the bundled LDIF |
-| `make lint` | Validate `pom.xml` + lint the Dockerfile (`hadolint`) + shell-script executable-bit guard + `mermaid-lint` |
-| `make mermaid-lint` | Validate README Mermaid diagrams via `minlag/mermaid-cli` (skipped under act) |
+| `make lint` | Validate `pom.xml` + lint the Dockerfile (`hadolint`) + shell-script executable-bit guard + diagram drift check |
+| `make diagrams` | Render the C4 PlantUML hero (`docs/diagrams/*.puml`) to committed PNGs via `plantuml/plantuml` |
+| `make diagrams-check` | Verify the committed diagram PNG matches its `.puml` source (drift gate; skipped under act) |
 | `make cve-check` | OWASP dependency-check (transitive deps; ~2 GB NVD download on first run) |
 | `make clean` | Remove Maven build artifacts |
 
@@ -249,9 +244,8 @@ GitHub Actions runs on every push to `master`, every `v*` git tag, every pull re
 
 | Job | Triggers | Purpose |
 |-----|----------|---------|
-| `changes` | every event | [`dorny/paths-filter`](https://github.com/dorny/paths-filter) — doc-only PRs skip every job below; also emits a `docs` output (README) that drives `mermaid-lint` |
-| `mermaid-lint` | README-only changes | Cheap docker + `minlag/mermaid-cli` validation of the README C4 hero diagram (no Maven/mise). README is `**.md` so a README-only edit skips `build`; this job validates the diagram on those edits. Idle (skipped) on code/tag events, where `build`'s `make ci` validates it |
-| `build` | code-changing events + every tag | Provisions Java 25 + Maven 3.9.16 via `jdx/mise-action`, restores `~/.m2` from `actions/cache`, runs `make ci` (alignment guards + lint + test + package), Trivy filesystem scan (informational), uploads `target/ldap-server.jar` as an artifact |
+| `changes` | every event | [`dorny/paths-filter`](https://github.com/dorny/paths-filter) — doc-only PRs skip every job below. `docs/diagrams/**/*.puml` + `docs/diagrams/out/**` are re-included as `code` so a C4 diagram-source edit still triggers `build` (→ `make diagrams-check` catches an un-regenerated PNG) |
+| `build` | code-changing events + every tag | Provisions Java 25 + Maven 3.9.16 via `jdx/mise-action`, restores `~/.m2` from `actions/cache`, runs `make ci` (alignment guards + lint incl. C4 diagram drift check + test + package), Trivy filesystem scan (informational), uploads `target/ldap-server.jar` as an artifact |
 | `cve-check` | tag pushes + weekly cron + dispatch | OWASP dependency-check via `mvn org.owasp:dependency-check-maven:check` (NVD + Sonatype OSS Index analyzers); NVD DB cached at `~/.m2/repository/org/owasp/dependency-check-data`, keyed on the ISO week so version bumps don't force a cold fetch. **`NVD_API_KEY` strongly recommended** (without it the NVD fetch fails on cold cache); **`OSS_INDEX_USER`/`OSS_INDEX_TOKEN`** enable OSS Index (else it's silently disabled) |
 | `release` | push to master OR `v*` tag | Downloads the JAR, recreates the `latest` GitHub Release via `softprops/action-gh-release` |
 | `docker` | `v*` tag only | Build image for scan → Trivy CRITICAL/HIGH image scan → `make image-smoke-test` → `make e2e` (LDAP bind + search) → log in to GHCR (`${{ github.actor }}` + auto-provisioned `GITHUB_TOKEN`; job has `packages: write`) → push single-arch `linux/amd64` image to `ghcr.io/<owner>/ldap-server/apacheds-ad` with `flavor: latest=true` → **cosign keyless-sign the pushed digest (OIDC, `id-token: write`) + attach an SPDX SBOM attestation**. Every gate blocks the push |

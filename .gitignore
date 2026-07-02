@@ -8,3 +8,5 @@ dependency-reduced-pom.xml
 .idea
 *.iml
 *.DS_Store
+# PlantUML render sentinel (a re-render trigger, not a tracked artefact — see Makefile DIAGRAM_STAMP)
+docs/diagrams/out/.plantuml-*.stamp
