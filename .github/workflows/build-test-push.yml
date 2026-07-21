@@ -77,7 +77,7 @@ jobs:
           # the instant its release object exists (assets may still be missing),
           # so auto-bumping could re-propose the 404ing version. Bump by hand
           # when `gh api repos/jdx/mise/releases/tags/v<X>` shows the asset.
-          version: 2026.7.7
+          version: 2026.7.11
           install: true
           cache: true
 
@@ -143,7 +143,7 @@ jobs:
           # Pin mise's own binary — see the build job for the full rationale
           # (mise tag-before-asset-publish race). Bump in lockstep with the
           # build job, by hand, when a newer mise's asset is verified live.
-          version: 2026.7.7
+          version: 2026.7.11
           install: true
           cache: true
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
